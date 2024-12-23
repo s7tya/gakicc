@@ -18,11 +18,37 @@ assert() {
 
 assert 0 0
 assert 42 42
+
 assert 21 "5+20-4"
+
 assert 41 " 12 + 34 - 5 "
+
 assert 20 "5+5*3"
+
 assert 30 "(5+5)*3"
+
 assert 2 "-3+5"
 assert 13 "+3+10"
+
+assert 1 "20==10*2"
+assert 0 "20==10*3"
+
+assert 1 "5>0"
+assert 0 "0>5"
+assert 0 "5>5"
+
+assert 1 "0<5"
+assert 0 "5<0"
+assert 0 "5<5"
+
+assert 1 "5>=5"
+assert 1 "5<=5"
+
+assert 1 "10>=5"
+assert 0 "5>=10"
+
+assert 1 "5<=10"
+assert 0 "10<=5"
+
 
 echo OK

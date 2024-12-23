@@ -1,13 +1,14 @@
 use core::panic;
 use std::env::args;
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 enum TokenKind {
     Reserved,
     Num(i32),
     Eof,
 }
 
+#[derive(Debug)]
 struct Token<'src> {
     kind: TokenKind,
     raw_str: &'src str,
@@ -19,6 +20,10 @@ enum NodeKind {
     Mul,
     Div,
     Num(i32),
+    Eq,
+    Ne,
+    Lt,
+    Le,
 }
 
 struct Node {
@@ -49,14 +54,14 @@ fn main() {
 
 fn push(reg: &str) {
     println!("  # push {}", reg);
-    println!("  addi sp, sp, -4");
-    println!("  sw {}, 0(sp)", reg);
+    println!("  addi sp, sp, -8");
+    println!("  sd {}, 0(sp)", reg);
 }
 
 fn pop(reg: &str) {
     println!("  # pop {}", reg);
-    println!("  lw {}, 0(sp)", reg);
-    println!("  addi sp, sp, 4");
+    println!("  ld {}, 0(sp)", reg);
+    println!("  addi sp, sp, 8");
 }
 
 fn gen(node: Node) {
@@ -87,6 +92,21 @@ fn gen(node: Node) {
         }
         NodeKind::Div => {
             println!("  div t2, t0, t1");
+        }
+        NodeKind::Eq => {
+            println!("  xor t2, t0, t1");
+            println!("  sltiu t2, t2, 1");
+        }
+        NodeKind::Ne => {
+            println!("  xor t2, t0, t1");
+            println!("  snez t2, t2");
+        }
+        NodeKind::Lt => {
+            println!("  slt t2, t0, t1");
+        }
+        NodeKind::Le => {
+            println!("  slt t2, t1, t0");
+            println!("  xori t2, t2, 1");
         }
         NodeKind::Num(_) => unreachable!(),
     }
@@ -153,6 +173,66 @@ impl<'src> Parser<'src> {
     }
 
     fn expr(&mut self) -> Node {
+        self.equality()
+    }
+
+    fn equality(&mut self) -> Node {
+        let mut node = self.relational();
+
+        loop {
+            if self.consume("==") {
+                node = Node {
+                    kind: NodeKind::Eq,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.relational())),
+                };
+            } else if self.consume("!=") {
+                node = Node {
+                    kind: NodeKind::Ne,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.relational())),
+                };
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn relational(&mut self) -> Node {
+        let mut node = self.add();
+
+        loop {
+            if self.consume("<") {
+                node = Node {
+                    kind: NodeKind::Lt,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.add())),
+                };
+            } else if self.consume("<=") {
+                node = Node {
+                    kind: NodeKind::Le,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.add())),
+                };
+            } else if self.consume(">") {
+                node = Node {
+                    kind: NodeKind::Lt,
+                    lhs: Some(Box::new(self.add())),
+                    rhs: Some(Box::new(node)),
+                };
+            } else if self.consume(">=") {
+                node = Node {
+                    kind: NodeKind::Le,
+                    lhs: Some(Box::new(self.add())),
+                    rhs: Some(Box::new(node)),
+                };
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn add(&mut self) -> Node {
         let mut node = self.mul();
         loop {
             if self.consume("+") {
@@ -250,10 +330,22 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            if "+-*/()".contains(c) {
+            if ["==", "!=", "<=", ">="]
+                .iter()
+                .any(|letter| self.source[self.cursor..].starts_with(letter))
+            {
                 tokens.push(Token {
                     kind: TokenKind::Reserved,
-                    raw_str: &self.source[self.cursor..=self.cursor],
+                    raw_str: &self.source[self.cursor..(self.cursor + 2)],
+                });
+                self.cursor += 2;
+                continue;
+            }
+
+            if "+-*/()<>".contains(c) {
+                tokens.push(Token {
+                    kind: TokenKind::Reserved,
+                    raw_str: &self.source[self.cursor..(self.cursor + 1)],
                 });
                 self.cursor += 1;
                 continue;
