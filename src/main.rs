@@ -21,7 +21,7 @@ fn main() {
 
     let mut lexer = Lexer::new(&args[1]);
     let tokens = lexer.lex();
-    let mut parser = Parser::new(tokens);
+    let mut parser = Parser::new(&args[1], tokens);
 
     println!("  .globl main");
     println!("main:");
@@ -41,13 +41,18 @@ fn main() {
 }
 
 struct Parser<'src> {
+    source: &'src str,
     tokens: Vec<Token<'src>>,
     cursor: usize,
 }
 
 impl<'src> Parser<'src> {
-    pub fn new(tokens: Vec<Token<'src>>) -> Self {
-        Self { tokens, cursor: 0 }
+    pub fn new(source: &'src str, tokens: Vec<Token<'src>>) -> Self {
+        Self {
+            source,
+            tokens,
+            cursor: 0,
+        }
     }
 
     pub fn consume(&mut self, op: &str) -> bool {
@@ -63,7 +68,7 @@ impl<'src> Parser<'src> {
     pub fn expect(&mut self, op: &str) {
         let token = &self.tokens[self.cursor];
         if token.kind != TokenKind::Reserved || token.raw_str != op {
-            panic!("'{}' ではありません", op);
+            self.error_at(&format!("'{}' ではありません", op));
         }
         self.cursor += 1;
     }
@@ -74,12 +79,22 @@ impl<'src> Parser<'src> {
             self.cursor += 1;
             value
         } else {
-            panic!("数ではありません");
+            self.error_at("数ではありません");
         }
     }
 
     pub fn at_eof(&self) -> bool {
         self.tokens[self.cursor].kind == TokenKind::Eof
+    }
+
+    pub fn error_at(&self, message: &str) -> ! {
+        panic!(
+            "{}\n{:>width$}\n{}",
+            self.source,
+            "^",
+            message,
+            width = self.cursor + 1
+        );
     }
 }
 
