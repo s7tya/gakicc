@@ -24,7 +24,7 @@ impl<'src> Lexer<'src> {
     pub fn lex(&mut self) -> Vec<Token<'src>> {
         let mut tokens = vec![];
 
-        while self.cursor < self.source.len() {
+        'outer: while self.cursor < self.source.len() {
             let c = self.source[self.cursor..].chars().next().unwrap();
 
             if c.is_whitespace() {
@@ -32,25 +32,17 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            if ["==", "!=", "<=", ">="]
-                .iter()
-                .any(|letter| self.source[self.cursor..].starts_with(letter))
-            {
-                tokens.push(Token {
-                    kind: TokenKind::Reserved,
-                    raw_str: &self.source[self.cursor..(self.cursor + 2)],
-                });
-                self.cursor += 2;
-                continue;
-            }
-
-            if "+-*/()<>".contains(c) {
-                tokens.push(Token {
-                    kind: TokenKind::Reserved,
-                    raw_str: &self.source[self.cursor..(self.cursor + 1)],
-                });
-                self.cursor += 1;
-                continue;
+            for punct in [
+                "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">",
+            ] {
+                if self.source[self.cursor..].starts_with(punct) {
+                    tokens.push(Token {
+                        kind: TokenKind::Reserved,
+                        raw_str: &self.source[self.cursor..(self.cursor + punct.len())],
+                    });
+                    self.cursor += punct.len();
+                    continue 'outer;
+                }
             }
 
             if c.is_ascii_digit() {
@@ -71,7 +63,7 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            panic!("トークナイズできません");
+            panic!("トークナイズできません: {}", &self.source[self.cursor..]);
         }
 
         tokens.push(Token {
