@@ -3,7 +3,7 @@ assert() {
   expected="$1"
   input="$2"
 
-  cargo run -q "$input" > tmp.s
+  cargo run -q -- "$input" > tmp.s
   riscv64-elf-gcc -o tmp tmp.s
   qemu-riscv64 ./tmp
   actual="$?"
@@ -22,5 +22,7 @@ assert 21 "5+20-4"
 assert 41 " 12 + 34 - 5 "
 assert 20 "5+5*3"
 assert 30 "(5+5)*3"
+assert 2 "-3+5"
+assert 13 "+3+10"
 
 echo OK
