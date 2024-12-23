@@ -13,6 +13,20 @@ struct Token<'src> {
     raw_str: &'src str,
 }
 
+enum NodeKind {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Num(i32),
+}
+
+struct Node {
+    kind: NodeKind,
+    lhs: Option<Box<Node>>,
+    rhs: Option<Box<Node>>,
+}
+
 fn main() {
     let args = args().collect::<Vec<_>>();
     if args.len() != 2 {
@@ -22,22 +36,63 @@ fn main() {
     let mut lexer = Lexer::new(&args[1]);
     let tokens = lexer.lex();
     let mut parser = Parser::new(&args[1], tokens);
+    let ast = parser.expr();
 
-    println!("  .globl main");
+    println!("  .global main");
     println!("main:");
-    println!("  li a0, {}", parser.expect_number());
 
-    while !parser.at_eof() {
-        if parser.consume("+") {
-            println!("  addi a0, a0, {}", parser.expect_number());
-            continue;
-        }
+    gen(ast);
 
-        parser.expect("-");
-        println!("  addi a0, a0, -{}", parser.expect_number());
+    pop("a0");
+    println!("  ret");
+}
+
+fn push(reg: &str) {
+    println!("  # push {}", reg);
+    println!("  addi sp, sp, -4");
+    println!("  sw {}, 0(sp)", reg);
+}
+
+fn pop(reg: &str) {
+    println!("  # pop {}", reg);
+    println!("  lw {}, 0(sp)", reg);
+    println!("  addi sp, sp, 4");
+}
+
+fn gen(node: Node) {
+    if let NodeKind::Num(value) = node.kind {
+        println!("  li t0, {}", value);
+        push("t0");
+        return;
     }
 
-    println!("  ret");
+    gen(*node.lhs.unwrap());
+    gen(*node.rhs.unwrap());
+
+    // pop
+    pop("t1");
+
+    // pop
+    pop("t0");
+
+    match node.kind {
+        NodeKind::Add => {
+            println!("  add t2, t0, t1");
+        }
+        NodeKind::Sub => {
+            println!("  sub t2, t0, t1");
+        }
+        NodeKind::Mul => {
+            println!("  mul t2, t0, t1");
+        }
+        NodeKind::Div => {
+            println!("  div t2, t0, t1");
+        }
+        NodeKind::Num(_) => unreachable!(),
+    }
+
+    // push
+    push("t2");
 }
 
 struct Parser<'src> {
@@ -96,6 +151,62 @@ impl<'src> Parser<'src> {
             width = self.cursor + 1
         );
     }
+
+    fn expr(&mut self) -> Node {
+        let mut node = self.mul();
+        loop {
+            if self.consume("+") {
+                node = Node {
+                    kind: NodeKind::Add,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.mul())),
+                };
+            } else if self.consume("-") {
+                node = Node {
+                    kind: NodeKind::Sub,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.mul())),
+                };
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn mul(&mut self) -> Node {
+        let mut node = self.primary();
+        loop {
+            if self.consume("*") {
+                node = Node {
+                    kind: NodeKind::Mul,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.primary())),
+                };
+            } else if self.consume("/") {
+                node = Node {
+                    kind: NodeKind::Div,
+                    lhs: Some(Box::new(node)),
+                    rhs: Some(Box::new(self.primary())),
+                };
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn primary(&mut self) -> Node {
+        if self.consume("(") {
+            let node = self.expr();
+            self.expect(")");
+            return node;
+        }
+
+        Node {
+            kind: NodeKind::Num(self.expect_number()),
+            lhs: None,
+            rhs: None,
+        }
+    }
 }
 
 struct Lexer<'src> {
@@ -119,7 +230,7 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            if c == '+' || c == '-' {
+            if "+-*/()".contains(c) {
                 tokens.push(Token {
                     kind: TokenKind::Reserved,
                     raw_str: &self.source[self.cursor..=self.cursor],
