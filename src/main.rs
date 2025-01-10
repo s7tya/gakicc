@@ -19,6 +19,6 @@ fn main() {
     let tokens = lexer.lex();
     let mut parser = Parser::new(&args[1], tokens);
 
-    let ast = parser.expr();
+    let ast = parser.parse();
     codegen(ast);
 }

@@ -1,5 +1,6 @@
 use crate::lexer::{Token, TokenKind};
 
+#[derive(Debug)]
 pub enum NodeKind {
     Add,
     Sub,
@@ -10,8 +11,10 @@ pub enum NodeKind {
     Ne,
     Lt,
     Le,
+    ExprStmt,
 }
 
+#[derive(Debug)]
 pub struct Node {
     pub kind: NodeKind,
     pub lhs: Option<Box<Node>>,
@@ -75,7 +78,31 @@ impl<'src> Parser<'src> {
         );
     }
 
-    pub fn expr(&mut self) -> Node {
+    pub fn parse(&mut self) -> Vec<Node> {
+        let mut nodes = vec![];
+        while !self.at_eof() {
+            nodes.push(self.stmt());
+        }
+
+        nodes
+    }
+
+    fn stmt(&mut self) -> Node {
+        self.expr_stmt()
+    }
+
+    fn expr_stmt(&mut self) -> Node {
+        let node = Node {
+            kind: NodeKind::ExprStmt,
+            lhs: Some(Box::new(self.expr())),
+            rhs: None,
+        };
+        self.expect(";");
+
+        node
+    }
+
+    fn expr(&mut self) -> Node {
         self.equality()
     }
 

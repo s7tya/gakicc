@@ -1,10 +1,12 @@
 use crate::parser::{Node, NodeKind};
 
-pub fn codegen(node: Node) {
+pub fn codegen(nodes: Vec<Node>) {
     println!("  .global main");
     println!("main:");
 
-    gen_expr(node);
+    for node in nodes {
+        gen_stmt(node);
+    }
 
     pop("a0");
     println!("  ret");
@@ -20,6 +22,15 @@ fn pop(reg: &str) {
     println!("  # pop {}", reg);
     println!("  ld {}, 0(sp)", reg);
     println!("  addi sp, sp, 8");
+}
+
+fn gen_stmt(node: Node) {
+    if matches!(node.kind, NodeKind::ExprStmt) {
+        gen_expr(*node.lhs.unwrap());
+        return;
+    }
+
+    panic!("invalid statement")
 }
 
 fn gen_expr(node: Node) {
@@ -63,7 +74,7 @@ fn gen_expr(node: Node) {
             println!("  slt t2, t1, t0");
             println!("  xori t2, t2, 1");
         }
-        NodeKind::Num(_) => unreachable!(),
+        NodeKind::Num(_) | NodeKind::ExprStmt => unreachable!(),
     }
 
     push("t2");
