@@ -172,12 +172,12 @@ impl Codegen {
                     self.gen_stmt(node);
                 }
             }
-            NodeKind::Return => {
-                self.gen_expr(*node.lhs.unwrap());
+            NodeKind::Return(node) => {
+                self.gen_expr(*node);
                 println!("  j .L.return");
             }
-            NodeKind::ExprStmt => {
-                self.gen_expr(*node.lhs.unwrap());
+            NodeKind::ExprStmt(node) => {
+                self.gen_expr(*node);
             }
             _ => {
                 panic!("invalid statement");

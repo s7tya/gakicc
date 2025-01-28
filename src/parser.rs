@@ -19,10 +19,10 @@ pub enum NodeKind<'src> {
     Ne,
     Lt,
     Le,
-    ExprStmt,
+    ExprStmt(Box<Node<'src>>),
     Assign,
     Var(&'src str),
-    Return,
+    Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
     If {
         cond: Box<Node<'src>>,
@@ -114,8 +114,8 @@ impl<'src> Parser<'src> {
     fn stmt(&mut self) -> Node<'src> {
         if self.consume("return") {
             let node = Node {
-                kind: NodeKind::Return,
-                lhs: Some(Box::new(self.expr())),
+                kind: NodeKind::Return(Box::new(self.expr())),
+                lhs: None,
                 rhs: None,
             };
             self.expect(";");
@@ -222,8 +222,8 @@ impl<'src> Parser<'src> {
         }
 
         let node = Node {
-            kind: NodeKind::ExprStmt,
-            lhs: Some(Box::new(self.expr())),
+            kind: NodeKind::ExprStmt(Box::new(self.expr())),
+            lhs: None,
             rhs: None,
         };
         self.expect(";");
