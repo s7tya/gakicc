@@ -30,7 +30,7 @@ pub enum NodeKind<'src> {
         els: Option<Box<Node<'src>>>,
     },
     For {
-        init: Box<Node<'src>>,
+        init: Option<Box<Node<'src>>>,
         cond: Option<Box<Node<'src>>>,
         inc: Option<Box<Node<'src>>>,
         then: Box<Node<'src>>,
@@ -146,7 +146,7 @@ impl<'src> Parser<'src> {
 
         if self.consume("for") {
             self.expect("(");
-            let init = self.expr_stmt();
+            let init = Some(self.expr_stmt());
 
             let mut cond = None;
             if !self.consume(";") {
@@ -164,9 +164,27 @@ impl<'src> Parser<'src> {
 
             return Node {
                 kind: NodeKind::For {
-                    init: Box::new(init),
+                    init: init.map(Box::new),
                     cond: cond.map(Box::new),
                     inc: inc.map(Box::new),
+                    then: Box::new(then),
+                },
+                lhs: None,
+                rhs: None,
+            };
+        }
+
+        if self.consume("while") {
+            self.expect("(");
+            let cond = Some(self.expr());
+            self.expect(")");
+            let then = self.stmt();
+
+            return Node {
+                kind: NodeKind::For {
+                    init: None,
+                    cond: cond.map(Box::new),
+                    inc: None,
                     then: Box::new(then),
                 },
                 lhs: None,

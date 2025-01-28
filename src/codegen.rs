@@ -136,7 +136,9 @@ impl Codegen {
                 then,
             } => {
                 self.count += 1;
-                self.gen_stmt(*init);
+                if let Some(init) = init {
+                    self.gen_stmt(*init);
+                }
                 println!(".L.begin.{}:", self.count);
                 if let Some(cond) = cond {
                     self.gen_expr(*cond);
