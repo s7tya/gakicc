@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::lexer::{Token, TokenKind};
 
+#[derive(Debug)]
 pub struct Function<'src> {
     pub nodes: Vec<Node<'src>>,
     pub locals: HashSet<String>,
@@ -21,6 +22,7 @@ pub enum NodeKind<'src> {
     ExprStmt,
     Assign,
     Var(&'src str),
+    Return,
 }
 
 #[derive(Debug, Clone)]
@@ -101,6 +103,17 @@ impl<'src> Parser<'src> {
     }
 
     fn stmt(&mut self) -> Node<'src> {
+        if self.consume("return") {
+            let node = Node {
+                kind: NodeKind::Return,
+                lhs: Some(Box::new(self.expr())),
+                rhs: None,
+            };
+            self.expect(";");
+
+            return node;
+        }
+
         self.expr_stmt()
     }
 
@@ -232,7 +245,7 @@ impl<'src> Parser<'src> {
 
     fn unary(&mut self) -> Node<'src> {
         if self.consume("+") {
-            return self.primary();
+            return self.unary();
         }
 
         if self.consume("-") {
@@ -243,7 +256,7 @@ impl<'src> Parser<'src> {
                     lhs: None,
                     rhs: None,
                 })),
-                rhs: Some(Box::new(self.primary())),
+                rhs: Some(Box::new(self.unary())),
             };
         }
 
