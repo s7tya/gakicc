@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{Function, Node, NodeKind};
+use crate::parser::{BinOps, Function, Node};
 
 pub struct Codegen {
     locals: HashMap<String, i32>,
@@ -43,7 +43,7 @@ impl Codegen {
     }
 
     fn gen_addr(&self, node: Node) {
-        if let NodeKind::Var(name) = node.kind {
+        if let Node::Var(name) = node {
             println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
             return;
         }
@@ -51,21 +51,25 @@ impl Codegen {
     }
 
     fn gen_expr(&self, node: Node) {
-        match node.kind {
-            NodeKind::Num(value) => {
+        match node {
+            Node::Num(value) => {
                 println!("  li t0, {}", value);
                 push("t0");
             }
-            NodeKind::Var(_) => {
+            Node::Var(_) => {
                 self.gen_addr(node);
                 println!("  ld t2, 0(a0)");
                 push("t2");
             }
-            NodeKind::Assign => {
-                self.gen_addr(*node.lhs.clone().unwrap());
+            Node::BinOps {
+                op: BinOps::Assign,
+                lhs,
+                rhs,
+            } => {
+                self.gen_addr(*lhs);
                 push("a0");
 
-                self.gen_expr(*node.rhs.clone().unwrap());
+                self.gen_expr(*rhs);
 
                 pop("t0");
                 pop("t1");
@@ -74,46 +78,38 @@ impl Codegen {
                 println!("  mv t2, t0");
                 push("t2");
             }
-
-            NodeKind::Add
-            | NodeKind::Sub
-            | NodeKind::Mul
-            | NodeKind::Div
-            | NodeKind::Eq
-            | NodeKind::Ne
-            | NodeKind::Lt
-            | NodeKind::Le => {
-                self.gen_expr(*node.lhs.clone().unwrap());
-                self.gen_expr(*node.rhs.clone().unwrap());
+            Node::BinOps { op, lhs, rhs } => {
+                self.gen_expr(*lhs);
+                self.gen_expr(*rhs);
 
                 pop("t1");
                 pop("t0");
 
-                match node.kind {
-                    NodeKind::Add => {
+                match op {
+                    BinOps::Add => {
                         println!("  add t2, t0, t1");
                     }
-                    NodeKind::Sub => {
+                    BinOps::Sub => {
                         println!("  sub t2, t0, t1");
                     }
-                    NodeKind::Mul => {
+                    BinOps::Mul => {
                         println!("  mul t2, t0, t1");
                     }
-                    NodeKind::Div => {
+                    BinOps::Div => {
                         println!("  div t2, t0, t1");
                     }
-                    NodeKind::Eq => {
+                    BinOps::Eq => {
                         println!("  xor t2, t0, t1");
                         println!("  sltiu t2, t2, 1");
                     }
-                    NodeKind::Ne => {
+                    BinOps::Ne => {
                         println!("  xor t2, t0, t1");
                         println!("  snez t2, t2");
                     }
-                    NodeKind::Lt => {
+                    BinOps::Lt => {
                         println!("  slt t2, t0, t1");
                     }
-                    NodeKind::Le => {
+                    BinOps::Le => {
                         println!("  slt t2, t1, t0");
                         println!("  xori t2, t2, 1");
                     }
@@ -128,8 +124,8 @@ impl Codegen {
     }
 
     fn gen_stmt(&mut self, node: Node) {
-        match node.kind {
-            NodeKind::For {
+        match node {
+            Node::For {
                 init,
                 cond,
                 inc,
@@ -152,7 +148,7 @@ impl Codegen {
                 println!("  j .L.begin.{}", self.count);
                 println!(".L.end.{}:", self.count);
             }
-            NodeKind::If { cond, then, els } => {
+            Node::If { cond, then, els } => {
                 self.count += 1;
 
                 self.gen_expr(*cond);
@@ -167,16 +163,16 @@ impl Codegen {
                 }
                 println!(".L.end.{}:", self.count);
             }
-            NodeKind::Block(nodes) => {
+            Node::Block(nodes) => {
                 for node in nodes {
                     self.gen_stmt(node);
                 }
             }
-            NodeKind::Return(node) => {
+            Node::Return(node) => {
                 self.gen_expr(*node);
                 println!("  j .L.return");
             }
-            NodeKind::ExprStmt(node) => {
+            Node::ExprStmt(node) => {
                 self.gen_expr(*node);
             }
             _ => {

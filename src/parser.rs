@@ -9,18 +9,22 @@ pub struct Function<'src> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum NodeKind<'src> {
+pub enum BinOps {
     Add,
     Sub,
     Mul,
     Div,
-    Num(i32),
     Eq,
     Ne,
     Lt,
     Le,
-    ExprStmt(Box<Node<'src>>),
     Assign,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum Node<'src> {
+    Num(i32),
+    ExprStmt(Box<Node<'src>>),
     Var(&'src str),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
@@ -35,13 +39,11 @@ pub enum NodeKind<'src> {
         inc: Option<Box<Node<'src>>>,
         then: Box<Node<'src>>,
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Node<'src> {
-    pub kind: NodeKind<'src>,
-    pub lhs: Option<Box<Node<'src>>>,
-    pub rhs: Option<Box<Node<'src>>>,
+    BinOps {
+        op: BinOps,
+        lhs: Box<Node<'src>>,
+        rhs: Box<Node<'src>>,
+    },
 }
 
 pub struct Parser<'src> {
@@ -113,11 +115,7 @@ impl<'src> Parser<'src> {
 
     fn stmt(&mut self) -> Node<'src> {
         if self.consume("return") {
-            let node = Node {
-                kind: NodeKind::Return(Box::new(self.expr())),
-                lhs: None,
-                rhs: None,
-            };
+            let node = Node::Return(Box::new(self.expr()));
             self.expect(";");
 
             return node;
@@ -133,14 +131,10 @@ impl<'src> Parser<'src> {
                 els = Some(self.stmt());
             }
 
-            return Node {
-                kind: NodeKind::If {
-                    cond: Box::new(cond),
-                    then: Box::new(then),
-                    els: els.map(Box::new),
-                },
-                lhs: None,
-                rhs: None,
+            return Node::If {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els: els.map(Box::new),
             };
         }
 
@@ -162,15 +156,11 @@ impl<'src> Parser<'src> {
 
             let then = self.stmt();
 
-            return Node {
-                kind: NodeKind::For {
-                    init: init.map(Box::new),
-                    cond: cond.map(Box::new),
-                    inc: inc.map(Box::new),
-                    then: Box::new(then),
-                },
-                lhs: None,
-                rhs: None,
+            return Node::For {
+                init: init.map(Box::new),
+                cond: cond.map(Box::new),
+                inc: inc.map(Box::new),
+                then: Box::new(then),
             };
         }
 
@@ -180,15 +170,11 @@ impl<'src> Parser<'src> {
             self.expect(")");
             let then = self.stmt();
 
-            return Node {
-                kind: NodeKind::For {
-                    init: None,
-                    cond: cond.map(Box::new),
-                    inc: None,
-                    then: Box::new(then),
-                },
-                lhs: None,
-                rhs: None,
+            return Node::For {
+                init: None,
+                cond: cond.map(Box::new),
+                inc: None,
+                then: Box::new(then),
             };
         }
 
@@ -205,27 +191,15 @@ impl<'src> Parser<'src> {
             nodes.push(self.stmt());
         }
 
-        Node {
-            kind: NodeKind::Block(nodes),
-            lhs: None,
-            rhs: None,
-        }
+        Node::Block(nodes)
     }
 
     fn expr_stmt(&mut self) -> Node<'src> {
         if self.consume(";") {
-            return Node {
-                kind: NodeKind::Block(vec![]),
-                lhs: None,
-                rhs: None,
-            };
+            return Node::Block(vec![]);
         }
 
-        let node = Node {
-            kind: NodeKind::ExprStmt(Box::new(self.expr())),
-            lhs: None,
-            rhs: None,
-        };
+        let node = Node::ExprStmt(Box::new(self.expr()));
         self.expect(";");
         node
     }
@@ -238,10 +212,10 @@ impl<'src> Parser<'src> {
         let mut node = self.equality();
 
         if self.consume("=") {
-            node = Node {
-                kind: NodeKind::Assign,
-                lhs: Some(Box::new(node)),
-                rhs: Some(Box::new(self.assign())),
+            node = Node::BinOps {
+                op: BinOps::Assign,
+                lhs: Box::new(node),
+                rhs: Box::new(self.assign()),
             }
         }
 
@@ -253,16 +227,16 @@ impl<'src> Parser<'src> {
 
         loop {
             if self.consume("==") {
-                node = Node {
-                    kind: NodeKind::Eq,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.relational())),
+                node = Node::BinOps {
+                    op: BinOps::Eq,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.relational()),
                 };
             } else if self.consume("!=") {
-                node = Node {
-                    kind: NodeKind::Ne,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.relational())),
+                node = Node::BinOps {
+                    op: BinOps::Ne,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.relational()),
                 };
             } else {
                 return node;
@@ -275,28 +249,28 @@ impl<'src> Parser<'src> {
 
         loop {
             if self.consume("<") {
-                node = Node {
-                    kind: NodeKind::Lt,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.add())),
+                node = Node::BinOps {
+                    op: BinOps::Lt,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.add()),
                 };
             } else if self.consume("<=") {
-                node = Node {
-                    kind: NodeKind::Le,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.add())),
+                node = Node::BinOps {
+                    op: BinOps::Le,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.add()),
                 };
             } else if self.consume(">") {
-                node = Node {
-                    kind: NodeKind::Lt,
-                    lhs: Some(Box::new(self.add())),
-                    rhs: Some(Box::new(node)),
+                node = Node::BinOps {
+                    op: BinOps::Lt,
+                    lhs: Box::new(self.add()),
+                    rhs: Box::new(node),
                 };
             } else if self.consume(">=") {
-                node = Node {
-                    kind: NodeKind::Le,
-                    lhs: Some(Box::new(self.add())),
-                    rhs: Some(Box::new(node)),
+                node = Node::BinOps {
+                    op: BinOps::Le,
+                    lhs: Box::new(self.add()),
+                    rhs: Box::new(node),
                 };
             } else {
                 return node;
@@ -308,16 +282,16 @@ impl<'src> Parser<'src> {
         let mut node = self.mul();
         loop {
             if self.consume("+") {
-                node = Node {
-                    kind: NodeKind::Add,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.mul())),
+                node = Node::BinOps {
+                    op: BinOps::Add,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.mul()),
                 };
             } else if self.consume("-") {
-                node = Node {
-                    kind: NodeKind::Sub,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.mul())),
+                node = Node::BinOps {
+                    op: BinOps::Sub,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.mul()),
                 };
             } else {
                 return node;
@@ -329,16 +303,16 @@ impl<'src> Parser<'src> {
         let mut node = self.unary();
         loop {
             if self.consume("*") {
-                node = Node {
-                    kind: NodeKind::Mul,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.unary())),
+                node = Node::BinOps {
+                    op: BinOps::Mul,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.unary()),
                 };
             } else if self.consume("/") {
-                node = Node {
-                    kind: NodeKind::Div,
-                    lhs: Some(Box::new(node)),
-                    rhs: Some(Box::new(self.unary())),
+                node = Node::BinOps {
+                    op: BinOps::Div,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.unary()),
                 };
             } else {
                 return node;
@@ -352,14 +326,10 @@ impl<'src> Parser<'src> {
         }
 
         if self.consume("-") {
-            return Node {
-                kind: NodeKind::Sub,
-                lhs: Some(Box::new(Node {
-                    kind: NodeKind::Num(0),
-                    lhs: None,
-                    rhs: None,
-                })),
-                rhs: Some(Box::new(self.unary())),
+            return Node::BinOps {
+                op: BinOps::Sub,
+                lhs: Box::new(Node::Num(0)),
+                rhs: Box::new(self.unary()),
             };
         }
 
@@ -379,17 +349,9 @@ impl<'src> Parser<'src> {
 
             self.cursor += 1;
 
-            return Node {
-                kind: NodeKind::Var(token.raw_str),
-                lhs: None,
-                rhs: None,
-            };
+            return Node::Var(token.raw_str);
         }
 
-        Node {
-            kind: NodeKind::Num(self.expect_number()),
-            lhs: None,
-            rhs: None,
-        }
+        Node::Num(self.expect_number())
     }
 }
