@@ -29,9 +29,7 @@ impl Codegen {
         println!("  mv fp, sp");
         println!("  addi sp, sp, -{}", stack_size);
 
-        for node in function.nodes {
-            self.gen_stmt(node);
-        }
+        self.gen_stmt(function.node);
 
         // Epilogue
         println!(".L.return:");
@@ -128,7 +126,12 @@ impl Codegen {
     }
 
     fn gen_stmt(&self, node: Node) {
-        if matches!(node.kind, NodeKind::Return) {
+        if let NodeKind::Block(nodes) = node.kind {
+            for node in nodes {
+                self.gen_stmt(node);
+            }
+            return;
+        } else if matches!(node.kind, NodeKind::Return) {
             self.gen_expr(*node.lhs.unwrap());
             println!("  j .L.return");
             return;

@@ -4,7 +4,7 @@ use crate::lexer::{Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Function<'src> {
-    pub nodes: Vec<Node<'src>>,
+    pub node: Node<'src>,
     pub locals: HashSet<String>,
 }
 
@@ -23,9 +23,10 @@ pub enum NodeKind<'src> {
     Assign,
     Var(&'src str),
     Return,
+    Block(Vec<Node<'src>>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Node<'src> {
     pub kind: NodeKind<'src>,
     pub lhs: Option<Box<Node<'src>>>,
@@ -91,13 +92,10 @@ impl<'src> Parser<'src> {
     }
 
     pub fn parse(&mut self) -> Function {
-        let mut nodes = vec![];
-        while !self.at_eof() {
-            nodes.push(self.stmt());
-        }
+        self.expect("{");
 
         Function {
-            nodes,
+            node: self.compound_stmt(),
             locals: self.locals.clone(),
         }
     }
@@ -114,7 +112,24 @@ impl<'src> Parser<'src> {
             return node;
         }
 
+        if self.consume("{") {
+            return self.compound_stmt();
+        }
+
         self.expr_stmt()
+    }
+
+    fn compound_stmt(&mut self) -> Node<'src> {
+        let mut nodes = vec![];
+        while !self.consume("}") {
+            nodes.push(self.stmt());
+        }
+
+        Node {
+            kind: NodeKind::Block(nodes),
+            lhs: None,
+            rhs: None,
+        }
     }
 
     fn expr_stmt(&mut self) -> Node<'src> {

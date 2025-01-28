@@ -34,7 +34,8 @@ impl<'src> Lexer<'src> {
             }
 
             for punct in [
-                "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";", "=", "return",
+                "==", "!=", "<=", ">=", "+", "-", "*", "/", "{", "}", "(", ")", "<", ">", ";", "=",
+                "return",
             ] {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {
