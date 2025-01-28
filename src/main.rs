@@ -1,7 +1,7 @@
 use core::panic;
 use std::env::args;
 
-use codegen::codegen;
+use codegen::Codegen;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -19,6 +19,7 @@ fn main() {
     let tokens = lexer.lex();
     let mut parser = Parser::new(&args[1], tokens);
 
-    let ast = parser.parse();
-    codegen(ast);
+    let function = parser.parse();
+    let mut codegen = Codegen::new();
+    codegen.codegen(function);
 }

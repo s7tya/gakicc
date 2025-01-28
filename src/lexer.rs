@@ -1,6 +1,7 @@
 #[derive(Debug, PartialEq, Eq)]
 pub enum TokenKind {
     Reserved,
+    Ident,
     Num(i32),
     Eof,
 }
@@ -33,7 +34,7 @@ impl<'src> Lexer<'src> {
             }
 
             for punct in [
-                "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";",
+                "==", "!=", "<=", ">=", "+", "-", "*", "/", "(", ")", "<", ">", ";", "=",
             ] {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {
@@ -43,6 +44,25 @@ impl<'src> Lexer<'src> {
                     self.cursor += punct.len();
                     continue 'outer;
                 }
+            }
+
+            if c.is_ascii_alphabetic() {
+                let start = self.cursor;
+
+                self.cursor += 1;
+
+                while let Some(ch) = self.source[self.cursor..].chars().next() {
+                    if !ch.is_ascii_alphanumeric() {
+                        break;
+                    }
+                    self.cursor += 1;
+                }
+
+                tokens.push(Token {
+                    kind: TokenKind::Ident,
+                    raw_str: &self.source[start..self.cursor],
+                });
+                continue;
             }
 
             if c.is_ascii_digit() {

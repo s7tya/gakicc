@@ -1,7 +1,14 @@
+use std::collections::HashSet;
+
 use crate::lexer::{Token, TokenKind};
 
-#[derive(Debug)]
-pub enum NodeKind {
+pub struct Function<'src> {
+    pub nodes: Vec<Node<'src>>,
+    pub locals: HashSet<String>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum NodeKind<'src> {
     Add,
     Sub,
     Mul,
@@ -12,19 +19,22 @@ pub enum NodeKind {
     Lt,
     Le,
     ExprStmt,
+    Assign,
+    Var(&'src str),
 }
 
-#[derive(Debug)]
-pub struct Node {
-    pub kind: NodeKind,
-    pub lhs: Option<Box<Node>>,
-    pub rhs: Option<Box<Node>>,
+#[derive(Debug, Clone)]
+pub struct Node<'src> {
+    pub kind: NodeKind<'src>,
+    pub lhs: Option<Box<Node<'src>>>,
+    pub rhs: Option<Box<Node<'src>>>,
 }
 
 pub struct Parser<'src> {
     source: &'src str,
     tokens: Vec<Token<'src>>,
     cursor: usize,
+    locals: HashSet<String>,
 }
 
 impl<'src> Parser<'src> {
@@ -33,6 +43,7 @@ impl<'src> Parser<'src> {
             source,
             tokens,
             cursor: 0,
+            locals: HashSet::new(),
         }
     }
 
@@ -42,7 +53,6 @@ impl<'src> Parser<'src> {
             return false;
         }
         self.cursor += 1;
-
         true
     }
 
@@ -78,35 +88,51 @@ impl<'src> Parser<'src> {
         );
     }
 
-    pub fn parse(&mut self) -> Vec<Node> {
+    pub fn parse(&mut self) -> Function {
         let mut nodes = vec![];
         while !self.at_eof() {
             nodes.push(self.stmt());
         }
 
-        nodes
+        Function {
+            nodes,
+            locals: self.locals.clone(),
+        }
     }
 
-    fn stmt(&mut self) -> Node {
+    fn stmt(&mut self) -> Node<'src> {
         self.expr_stmt()
     }
 
-    fn expr_stmt(&mut self) -> Node {
+    fn expr_stmt(&mut self) -> Node<'src> {
         let node = Node {
             kind: NodeKind::ExprStmt,
             lhs: Some(Box::new(self.expr())),
             rhs: None,
         };
         self.expect(";");
+        node
+    }
+
+    fn expr(&mut self) -> Node<'src> {
+        self.assign()
+    }
+
+    fn assign(&mut self) -> Node<'src> {
+        let mut node = self.equality();
+
+        if self.consume("=") {
+            node = Node {
+                kind: NodeKind::Assign,
+                lhs: Some(Box::new(node)),
+                rhs: Some(Box::new(self.assign())),
+            }
+        }
 
         node
     }
 
-    fn expr(&mut self) -> Node {
-        self.equality()
-    }
-
-    fn equality(&mut self) -> Node {
+    fn equality(&mut self) -> Node<'src> {
         let mut node = self.relational();
 
         loop {
@@ -128,7 +154,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn relational(&mut self) -> Node {
+    fn relational(&mut self) -> Node<'src> {
         let mut node = self.add();
 
         loop {
@@ -162,7 +188,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn add(&mut self) -> Node {
+    fn add(&mut self) -> Node<'src> {
         let mut node = self.mul();
         loop {
             if self.consume("+") {
@@ -183,7 +209,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn mul(&mut self) -> Node {
+    fn mul(&mut self) -> Node<'src> {
         let mut node = self.unary();
         loop {
             if self.consume("*") {
@@ -204,7 +230,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn unary(&mut self) -> Node {
+    fn unary(&mut self) -> Node<'src> {
         if self.consume("+") {
             return self.primary();
         }
@@ -224,11 +250,24 @@ impl<'src> Parser<'src> {
         self.primary()
     }
 
-    fn primary(&mut self) -> Node {
+    fn primary(&mut self) -> Node<'src> {
         if self.consume("(") {
             let node = self.expr();
             self.expect(")");
             return node;
+        }
+
+        let token = &self.tokens[self.cursor];
+        if token.kind == TokenKind::Ident {
+            self.locals.insert(token.raw_str.to_string());
+
+            self.cursor += 1;
+
+            return Node {
+                kind: NodeKind::Var(token.raw_str),
+                lhs: None,
+                rhs: None,
+            };
         }
 
         Node {
