@@ -133,6 +133,14 @@ impl<'src> Parser<'src> {
     }
 
     fn expr_stmt(&mut self) -> Node<'src> {
+        if self.consume(";") {
+            return Node {
+                kind: NodeKind::Block(vec![]),
+                lhs: None,
+                rhs: None,
+            };
+        }
+
         let node = Node {
             kind: NodeKind::ExprStmt,
             lhs: Some(Box::new(self.expr())),
