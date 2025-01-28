@@ -4,12 +4,14 @@ use crate::parser::{Function, Node, NodeKind};
 
 pub struct Codegen {
     locals: HashMap<String, i32>,
+    count: usize,
 }
 
 impl Codegen {
     pub fn new() -> Self {
         Self {
             locals: HashMap::new(),
+            count: 0,
         }
     }
 
@@ -125,21 +127,39 @@ impl Codegen {
         }
     }
 
-    fn gen_stmt(&self, node: Node) {
-        if let NodeKind::Block(nodes) = node.kind {
-            for node in nodes {
-                self.gen_stmt(node);
+    fn gen_stmt(&mut self, node: Node) {
+        match node.kind {
+            NodeKind::If { cond, then, els } => {
+                self.count += 1;
+
+                self.gen_expr(*cond);
+                pop("a0");
+                println!("  beq a0, zero, .L.else.{}", self.count);
+
+                self.gen_stmt(*then);
+                println!("  j .L.end.{}", self.count);
+                println!(".L.else.{}:", self.count);
+                if let Some(els) = els {
+                    self.gen_stmt(*els);
+                }
+                println!(".L.end.{}:", self.count);
             }
-            return;
-        } else if matches!(node.kind, NodeKind::Return) {
-            self.gen_expr(*node.lhs.unwrap());
-            println!("  j .L.return");
-            return;
-        } else if matches!(node.kind, NodeKind::ExprStmt) {
-            self.gen_expr(*node.lhs.unwrap());
-            return;
+            NodeKind::Block(nodes) => {
+                for node in nodes {
+                    self.gen_stmt(node);
+                }
+            }
+            NodeKind::Return => {
+                self.gen_expr(*node.lhs.unwrap());
+                println!("  j .L.return");
+            }
+            NodeKind::ExprStmt => {
+                self.gen_expr(*node.lhs.unwrap());
+            }
+            _ => {
+                panic!("invalid statement");
+            }
         }
-        panic!("invalid statement");
     }
 }
 

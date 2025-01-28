@@ -24,6 +24,11 @@ pub enum NodeKind<'src> {
     Var(&'src str),
     Return,
     Block(Vec<Node<'src>>),
+    If {
+        cond: Box<Node<'src>>,
+        then: Box<Node<'src>>,
+        els: Option<Box<Node<'src>>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,6 +115,27 @@ impl<'src> Parser<'src> {
             self.expect(";");
 
             return node;
+        }
+
+        if self.consume("if") {
+            self.expect("(");
+            let cond = self.expr();
+            self.expect(")");
+            let then = self.stmt();
+            let mut els = None;
+            if self.consume("else") {
+                els = Some(self.stmt());
+            }
+
+            return Node {
+                kind: NodeKind::If {
+                    cond: Box::new(cond),
+                    then: Box::new(then),
+                    els: els.map(Box::new),
+                },
+                lhs: None,
+                rhs: None,
+            };
         }
 
         if self.consume("{") {
