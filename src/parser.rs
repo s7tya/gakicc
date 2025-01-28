@@ -29,6 +29,12 @@ pub enum NodeKind<'src> {
         then: Box<Node<'src>>,
         els: Option<Box<Node<'src>>>,
     },
+    For {
+        init: Box<Node<'src>>,
+        cond: Option<Box<Node<'src>>>,
+        inc: Option<Box<Node<'src>>>,
+        then: Box<Node<'src>>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +138,36 @@ impl<'src> Parser<'src> {
                     cond: Box::new(cond),
                     then: Box::new(then),
                     els: els.map(Box::new),
+                },
+                lhs: None,
+                rhs: None,
+            };
+        }
+
+        if self.consume("for") {
+            self.expect("(");
+            let init = self.expr_stmt();
+
+            let mut cond = None;
+            if !self.consume(";") {
+                cond = Some(self.expr());
+                self.expect(";");
+            }
+
+            let mut inc = None;
+            if !self.consume(")") {
+                inc = Some(self.expr());
+                self.expect(")");
+            }
+
+            let then = self.stmt();
+
+            return Node {
+                kind: NodeKind::For {
+                    init: Box::new(init),
+                    cond: cond.map(Box::new),
+                    inc: inc.map(Box::new),
+                    then: Box::new(then),
                 },
                 lhs: None,
                 rhs: None,

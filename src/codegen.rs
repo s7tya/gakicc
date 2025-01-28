@@ -129,6 +129,27 @@ impl Codegen {
 
     fn gen_stmt(&mut self, node: Node) {
         match node.kind {
+            NodeKind::For {
+                init,
+                cond,
+                inc,
+                then,
+            } => {
+                self.count += 1;
+                self.gen_stmt(*init);
+                println!(".L.begin.{}:", self.count);
+                if let Some(cond) = cond {
+                    self.gen_expr(*cond);
+                    pop("a0");
+                    println!("  beq a0, zero, .L.end.{}", self.count);
+                }
+                self.gen_stmt(*then);
+                if let Some(inc) = inc {
+                    self.gen_expr(*inc);
+                }
+                println!("  j .L.begin.{}", self.count);
+                println!(".L.end.{}:", self.count);
+            }
             NodeKind::If { cond, then, els } => {
                 self.count += 1;
 
