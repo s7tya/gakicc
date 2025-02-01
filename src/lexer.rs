@@ -17,6 +17,14 @@ pub struct Lexer<'src> {
     cursor: usize,
 }
 
+fn is_ident_first(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+
+fn is_ident_follow(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
 impl<'src> Lexer<'src> {
     pub fn new(source: &'src str) -> Self {
         Self { source, cursor: 0 }
@@ -33,27 +41,38 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
+            for keyword in ["return", "if", "else", "for", "while"] {
+                if let Some(rest) = self.source[self.cursor..].strip_prefix(keyword) {
+                    if rest.is_empty() || !is_ident_follow(rest.chars().next().unwrap()) {
+                        tokens.push(Token {
+                            kind: TokenKind::Reserved,
+                            raw_str: &self.source[self.cursor..self.cursor + keyword.len()],
+                        });
+                        self.cursor += keyword.len();
+                        continue 'outer;
+                    }
+                }
+            }
+
             for punct in [
                 "==", "!=", "<=", ">=", "+", "-", "*", "/", "{", "}", "(", ")", "<", ">", ";", "=",
-                "return", "if", "else", "for", "while",
             ] {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {
                         kind: TokenKind::Reserved,
-                        raw_str: &self.source[self.cursor..(self.cursor + punct.len())],
+                        raw_str: &self.source[self.cursor..self.cursor + punct.len()],
                     });
                     self.cursor += punct.len();
                     continue 'outer;
                 }
             }
 
-            if c.is_ascii_alphabetic() {
+            if is_ident_first(c) {
                 let start = self.cursor;
-
                 self.cursor += 1;
 
                 while let Some(ch) = self.source[self.cursor..].chars().next() {
-                    if !ch.is_ascii_alphanumeric() {
+                    if !is_ident_follow(ch) {
                         break;
                     }
                     self.cursor += 1;
@@ -77,8 +96,13 @@ impl<'src> Lexer<'src> {
                 {
                     self.cursor += 1;
                 }
+
                 tokens.push(Token {
-                    kind: TokenKind::Num(self.source[start..self.cursor].parse::<i32>().unwrap()),
+                    kind: TokenKind::Num(
+                        self.source[start..self.cursor]
+                            .parse::<i32>()
+                            .expect("数字へのパースに失敗"),
+                    ),
                     raw_str: &self.source[start..self.cursor],
                 });
                 continue;
