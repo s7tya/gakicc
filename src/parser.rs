@@ -1,11 +1,9 @@
-use std::collections::HashSet;
-
 use crate::lexer::{Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Function<'src> {
     pub node: Node<'src>,
-    pub locals: HashSet<String>,
+    pub locals: Vec<&'src str>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -28,6 +26,8 @@ pub enum Node<'src> {
     Var(&'src str),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
+    Addr(Box<Node<'src>>),
+    Deref(Box<Node<'src>>),
     If {
         cond: Box<Node<'src>>,
         then: Box<Node<'src>>,
@@ -50,7 +50,7 @@ pub struct Parser<'src> {
     source: &'src str,
     tokens: Vec<Token<'src>>,
     cursor: usize,
-    locals: HashSet<String>,
+    locals: Vec<&'src str>,
 }
 
 impl<'src> Parser<'src> {
@@ -59,7 +59,7 @@ impl<'src> Parser<'src> {
             source,
             tokens,
             cursor: 0,
-            locals: HashSet::new(),
+            locals: vec![],
         }
     }
 
@@ -333,6 +333,14 @@ impl<'src> Parser<'src> {
             };
         }
 
+        if self.consume("&") {
+            return Node::Addr(Box::new(self.unary()));
+        }
+
+        if self.consume("*") {
+            return Node::Deref(Box::new(self.unary()));
+        }
+
         self.primary()
     }
 
@@ -345,7 +353,7 @@ impl<'src> Parser<'src> {
 
         let token = &self.tokens[self.cursor];
         if token.kind == TokenKind::Ident {
-            self.locals.insert(token.raw_str.to_string());
+            self.locals.push(token.raw_str);
 
             self.cursor += 1;
 

@@ -2,12 +2,12 @@ use std::collections::HashMap;
 
 use crate::parser::{BinOps, Function, Node};
 
-pub struct Codegen {
-    locals: HashMap<String, i32>,
+pub struct Codegen<'src> {
+    locals: HashMap<&'src str, i32>,
     count: usize,
 }
 
-impl Codegen {
+impl<'src> Codegen<'src> {
     pub fn new() -> Self {
         Self {
             locals: HashMap::new(),
@@ -15,9 +15,10 @@ impl Codegen {
         }
     }
 
-    pub fn codegen(&mut self, function: Function) {
+    pub fn codegen(&mut self, function: Function<'src>) {
         let mut offset = 0;
-        for local in function.locals {
+
+        for local in function.locals.into_iter().rev() {
             offset += 8;
             self.locals.insert(local, -(offset as i32));
         }
@@ -43,11 +44,18 @@ impl Codegen {
     }
 
     fn gen_addr(&self, node: Node) {
-        if let Node::Var(name) = node {
-            println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
-            return;
+        match node {
+            Node::Var(name) => {
+                println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
+            }
+            Node::Deref(node) => {
+                self.gen_expr(*node);
+                pop("a0");
+            }
+            _ => {
+                panic!("{:?} is not an lvalue", node);
+            }
         }
-        panic!("not an lvalue");
     }
 
     fn gen_expr(&self, node: Node) {
@@ -60,6 +68,16 @@ impl Codegen {
                 self.gen_addr(node);
                 println!("  ld t2, 0(a0)");
                 push("t2");
+            }
+            Node::Deref(node) => {
+                self.gen_expr(*node);
+                pop("a0");
+                println!("  ld a0, 0(a0)");
+                push("a0");
+            }
+            Node::Addr(node) => {
+                self.gen_addr(*node);
+                push("a0");
             }
             Node::BinOps {
                 op: BinOps::Assign,
@@ -174,6 +192,7 @@ impl Codegen {
             }
             Node::ExprStmt(node) => {
                 self.gen_expr(*node);
+                pop("zero");
             }
             _ => {
                 panic!("invalid statement");
