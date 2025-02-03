@@ -2,6 +2,7 @@ use core::panic;
 use std::env::args;
 
 use codegen::Codegen;
+use ctype::type_function;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -21,6 +22,8 @@ fn main() {
     let mut parser = Parser::new(&args[1], tokens);
 
     let function = parser.parse();
+    let typed_function = type_function(function);
+
     let mut codegen = Codegen::new();
-    codegen.codegen(function);
+    codegen.codegen(typed_function);
 }

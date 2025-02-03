@@ -1,7 +1,4 @@
-use crate::{
-    ctype::CType,
-    lexer::{Token, TokenKind},
-};
+use crate::lexer::{Token, TokenKind};
 
 #[derive(Debug)]
 pub struct Function<'src> {
@@ -10,7 +7,7 @@ pub struct Function<'src> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum BinOps {
+pub enum BinOp {
     Add,
     Sub,
     Mul,
@@ -42,8 +39,8 @@ pub enum NodeKind<'src> {
         inc: Option<Box<Node<'src>>>,
         then: Box<Node<'src>>,
     },
-    BinOps {
-        op: BinOps,
+    BinOp {
+        op: BinOp,
         lhs: Box<Node<'src>>,
         rhs: Box<Node<'src>>,
     },
@@ -52,15 +49,11 @@ pub enum NodeKind<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Node<'src> {
     pub kind: NodeKind<'src>,
-    pub ctype: CType,
 }
 
 impl<'src> Node<'src> {
     pub fn new(kind: NodeKind<'src>) -> Self {
-        Node {
-            ctype: CType::new(&kind),
-            kind,
-        }
+        Self { kind }
     }
 }
 
@@ -231,8 +224,8 @@ impl<'src> Parser<'src> {
         let mut node = self.equality();
 
         if self.consume("=") {
-            node = Node::new(NodeKind::BinOps {
-                op: BinOps::Assign,
+            node = Node::new(NodeKind::BinOp {
+                op: BinOp::Assign,
                 lhs: Box::new(node),
                 rhs: Box::new(self.assign()),
             })
@@ -246,14 +239,14 @@ impl<'src> Parser<'src> {
 
         loop {
             if self.consume("==") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Eq,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Eq,
                     lhs: Box::new(node),
                     rhs: Box::new(self.relational()),
                 });
             } else if self.consume("!=") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Ne,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Ne,
                     lhs: Box::new(node),
                     rhs: Box::new(self.relational()),
                 });
@@ -268,26 +261,26 @@ impl<'src> Parser<'src> {
 
         loop {
             if self.consume("<") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Lt,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Lt,
                     lhs: Box::new(node),
                     rhs: Box::new(self.add()),
                 });
             } else if self.consume("<=") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Le,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Le,
                     lhs: Box::new(node),
                     rhs: Box::new(self.add()),
                 });
             } else if self.consume(">") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Lt,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Lt,
                     lhs: Box::new(self.add()),
                     rhs: Box::new(node),
                 });
             } else if self.consume(">=") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Le,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Le,
                     lhs: Box::new(self.add()),
                     rhs: Box::new(node),
                 });
@@ -297,81 +290,21 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn new_add(mut lhs: Node<'src>, mut rhs: Node<'src>) -> Node<'src> {
-        match (&lhs.ctype, &rhs.ctype) {
-            (CType::Int, CType::Int) => {
-                return Node::new(NodeKind::BinOps {
-                    op: BinOps::Add,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                });
-            }
-            (CType::Int, CType::Ptr(_)) => {
-                (lhs, rhs) = (rhs, lhs);
-            }
-            (CType::Ptr(_), CType::Int) => {}
-            (CType::Ptr(_), CType::Ptr(_)) | (CType::Statement, _) | (_, CType::Statement) => {
-                panic!()
-            }
-        }
-
-        rhs = Node::new(NodeKind::BinOps {
-            op: BinOps::Mul,
-            lhs: Box::new(rhs),
-            rhs: Box::new(Node::new(NodeKind::Num(8))),
-        });
-
-        Node::new(NodeKind::BinOps {
-            op: BinOps::Add,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        })
-    }
-
-    fn new_sub(lhs: Node<'src>, rhs: Node<'src>) -> Node<'src> {
-        match (&lhs.ctype, &rhs.ctype) {
-            (CType::Int, CType::Int) => Node::new(NodeKind::BinOps {
-                op: BinOps::Sub,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-            }),
-            // ptr - ptr
-            (CType::Ptr(_), CType::Ptr(_)) => {
-                let node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Sub,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                });
-                Node::new(NodeKind::BinOps {
-                    op: BinOps::Div,
-                    lhs: Box::new(node),
-                    rhs: Box::new(Node::new(NodeKind::Num(8))),
-                })
-            }
-            (CType::Ptr(_), CType::Int) => {
-                let node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Mul,
-                    lhs: Box::new(rhs),
-                    rhs: Box::new(Node::new(NodeKind::Num(8))),
-                });
-
-                Node::new(NodeKind::BinOps {
-                    op: BinOps::Sub,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(node),
-                })
-            }
-            (CType::Int, CType::Ptr(_)) | (CType::Statement, _) | (_, CType::Statement) => panic!(),
-        }
-    }
-
     fn add(&mut self) -> Node<'src> {
         let mut node = self.mul();
         loop {
             if self.consume("+") {
-                node = Self::new_add(node, self.mul());
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Add,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.mul()),
+                });
             } else if self.consume("-") {
-                node = Self::new_sub(node, self.mul());
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Sub,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.mul()),
+                });
             } else {
                 return node;
             }
@@ -382,14 +315,14 @@ impl<'src> Parser<'src> {
         let mut node = self.unary();
         loop {
             if self.consume("*") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Mul,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Mul,
                     lhs: Box::new(node),
                     rhs: Box::new(self.unary()),
                 });
             } else if self.consume("/") {
-                node = Node::new(NodeKind::BinOps {
-                    op: BinOps::Div,
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Div,
                     lhs: Box::new(node),
                     rhs: Box::new(self.unary()),
                 });
@@ -405,8 +338,8 @@ impl<'src> Parser<'src> {
         }
 
         if self.consume("-") {
-            return Node::new(NodeKind::BinOps {
-                op: BinOps::Sub,
+            return Node::new(NodeKind::BinOp {
+                op: BinOp::Sub,
                 lhs: Box::new(Node::new(NodeKind::Num(0))),
                 rhs: Box::new(self.unary()),
             });
