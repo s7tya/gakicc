@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::parser::{BinOps, Function, Node};
+use crate::parser::{BinOps, Function, Node, NodeKind};
 
 pub struct Codegen<'src> {
     locals: HashMap<&'src str, i32>,
@@ -44,11 +44,11 @@ impl<'src> Codegen<'src> {
     }
 
     fn gen_addr(&self, node: Node) {
-        match node {
-            Node::Var(name) => {
+        match node.kind {
+            NodeKind::Var(name) => {
                 println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
             }
-            Node::Deref(node) => {
+            NodeKind::Deref(node) => {
                 self.gen_expr(*node);
                 pop("a0");
             }
@@ -59,27 +59,27 @@ impl<'src> Codegen<'src> {
     }
 
     fn gen_expr(&self, node: Node) {
-        match node {
-            Node::Num(value) => {
+        match node.kind {
+            NodeKind::Num(value) => {
                 println!("  li t0, {}", value);
                 push("t0");
             }
-            Node::Var(_) => {
+            NodeKind::Var(_) => {
                 self.gen_addr(node);
                 println!("  ld t2, 0(a0)");
                 push("t2");
             }
-            Node::Deref(node) => {
+            NodeKind::Deref(node) => {
                 self.gen_expr(*node);
                 pop("a0");
                 println!("  ld a0, 0(a0)");
                 push("a0");
             }
-            Node::Addr(node) => {
+            NodeKind::Addr(node) => {
                 self.gen_addr(*node);
                 push("a0");
             }
-            Node::BinOps {
+            NodeKind::BinOps {
                 op: BinOps::Assign,
                 lhs,
                 rhs,
@@ -96,7 +96,7 @@ impl<'src> Codegen<'src> {
                 println!("  mv t2, t0");
                 push("t2");
             }
-            Node::BinOps { op, lhs, rhs } => {
+            NodeKind::BinOps { op, lhs, rhs } => {
                 self.gen_expr(*lhs);
                 self.gen_expr(*rhs);
 
@@ -142,8 +142,8 @@ impl<'src> Codegen<'src> {
     }
 
     fn gen_stmt(&mut self, node: Node) {
-        match node {
-            Node::For {
+        match node.kind {
+            NodeKind::For {
                 init,
                 cond,
                 inc,
@@ -166,7 +166,7 @@ impl<'src> Codegen<'src> {
                 println!("  j .L.begin.{}", self.count);
                 println!(".L.end.{}:", self.count);
             }
-            Node::If { cond, then, els } => {
+            NodeKind::If { cond, then, els } => {
                 self.count += 1;
 
                 self.gen_expr(*cond);
@@ -181,16 +181,16 @@ impl<'src> Codegen<'src> {
                 }
                 println!(".L.end.{}:", self.count);
             }
-            Node::Block(nodes) => {
+            NodeKind::Block(nodes) => {
                 for node in nodes {
                     self.gen_stmt(node);
                 }
             }
-            Node::Return(node) => {
+            NodeKind::Return(node) => {
                 self.gen_expr(*node);
                 println!("  j .L.return");
             }
-            Node::ExprStmt(node) => {
+            NodeKind::ExprStmt(node) => {
                 self.gen_expr(*node);
                 pop("zero");
             }

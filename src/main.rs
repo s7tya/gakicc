@@ -6,6 +6,7 @@ use lexer::Lexer;
 use parser::Parser;
 
 mod codegen;
+mod ctype;
 mod lexer;
 mod parser;
 
