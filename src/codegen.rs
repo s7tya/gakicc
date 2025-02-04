@@ -39,7 +39,6 @@ impl<'src> Codegen<'src> {
 
         // Epilogue
         println!(".L.return:");
-        pop("a0");
         println!("  mv sp, fp");
         pop("fp");
 
@@ -53,7 +52,6 @@ impl<'src> Codegen<'src> {
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
-                pop("a0");
             }
             _ => {
                 panic!("{:?} is not an lvalue", node);
@@ -64,23 +62,18 @@ impl<'src> Codegen<'src> {
     fn gen_expr(&self, node: TypedNode) {
         match node.kind {
             TypedNodeKind::Num(value) => {
-                println!("  li t0, {}", value);
-                push("t0");
+                println!("  li a0, {}", value);
             }
             TypedNodeKind::Var(_) => {
                 self.gen_addr(node);
-                println!("  ld t2, 0(a0)");
-                push("t2");
+                println!("  ld a0, 0(a0)");
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
-                pop("a0");
                 println!("  ld a0, 0(a0)");
-                push("a0");
             }
             TypedNodeKind::Addr(node) => {
                 self.gen_addr(*node);
-                push("a0");
             }
             TypedNodeKind::BinOp {
                 op: BinOp::Assign,
@@ -91,53 +84,53 @@ impl<'src> Codegen<'src> {
                 push("a0");
 
                 self.gen_expr(*rhs);
+                push("a0");
 
                 pop("t0");
                 pop("t1");
-                println!("  sd t0, 0(t1)");
 
-                println!("  mv t2, t0");
-                push("t2");
+                println!("  sd t0, 0(t1)");
+                println!("  mv a0, t0");
             }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
                 self.gen_expr(*lhs);
+                push("a0");
                 self.gen_expr(*rhs);
+                push("a0");
 
                 pop("t1");
                 pop("t0");
 
                 match op {
                     BinOp::Add => {
-                        println!("  add t2, t0, t1");
+                        println!("  add a0, t0, t1");
                     }
                     BinOp::Sub => {
-                        println!("  sub t2, t0, t1");
+                        println!("  sub a0, t0, t1");
                     }
                     BinOp::Mul => {
-                        println!("  mul t2, t0, t1");
+                        println!("  mul a0, t0, t1");
                     }
                     BinOp::Div => {
-                        println!("  div t2, t0, t1");
+                        println!("  div a0, t0, t1");
                     }
                     BinOp::Eq => {
-                        println!("  xor t2, t0, t1");
-                        println!("  sltiu t2, t2, 1");
+                        println!("  xor a0, t0, t1");
+                        println!("  sltiu a0, a0, 1");
                     }
                     BinOp::Ne => {
-                        println!("  xor t2, t0, t1");
-                        println!("  snez t2, t2");
+                        println!("  xor a0, t0, t1");
+                        println!("  snez a0, a0");
                     }
                     BinOp::Lt => {
-                        println!("  slt t2, t0, t1");
+                        println!("  slt a0, t0, t1");
                     }
                     BinOp::Le => {
-                        println!("  slt t2, t1, t0");
-                        println!("  xori t2, t2, 1");
+                        println!("  slt a0, t1, t0");
+                        println!("  xori a0, a0, 1");
                     }
                     _ => unreachable!(),
                 }
-
-                push("t2");
             }
 
             _ => panic!("invalid expression"),
@@ -159,7 +152,6 @@ impl<'src> Codegen<'src> {
                 println!(".L.begin.{}:", self.count);
                 if let Some(cond) = cond {
                     self.gen_expr(*cond);
-                    pop("a0");
                     println!("  beq a0, zero, .L.end.{}", self.count);
                 }
                 self.gen_stmt(*then);
@@ -173,7 +165,6 @@ impl<'src> Codegen<'src> {
                 self.count += 1;
 
                 self.gen_expr(*cond);
-                pop("a0");
                 println!("  beq a0, zero, .L.else.{}", self.count);
 
                 self.gen_stmt(*then);
@@ -195,7 +186,6 @@ impl<'src> Codegen<'src> {
             }
             TypedNodeKind::ExprStmt(node) => {
                 self.gen_expr(*node);
-                pop("zero");
             }
             _ => {
                 panic!("invalid statement");
