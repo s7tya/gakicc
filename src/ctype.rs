@@ -28,7 +28,10 @@ pub enum TypedNodeKind<'src> {
     Var(Obj<'src>),
     Return(Box<TypedNode<'src>>),
     Block(Vec<TypedNode<'src>>),
-    FuncCall(&'src str),
+    FuncCall {
+        name: &'src str,
+        args: Vec<TypedNode<'src>>,
+    },
     Addr(Box<TypedNode<'src>>),
     Deref(Box<TypedNode<'src>>),
     If {
@@ -313,8 +316,14 @@ fn type_node(node: Node) -> TypedNode {
                 }
             }
         }
-        NodeKind::FuncCall(name) => TypedNode {
-            kind: TypedNodeKind::FuncCall(name),
+        NodeKind::FuncCall { name, args } => TypedNode {
+            kind: TypedNodeKind::FuncCall {
+                name,
+                args: args
+                    .into_iter()
+                    .map(|arg| type_node(arg))
+                    .collect::<Vec<_>>(),
+            },
             // TODO: FuncCall の型がわからない、statement であってる？
             ctype: CType {
                 kind: CTypeKind::Statement,

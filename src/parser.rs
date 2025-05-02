@@ -35,7 +35,10 @@ pub enum NodeKind<'src> {
     Var(Obj<'src>),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
-    FuncCall(&'src str),
+    FuncCall {
+        name: &'src str,
+        args: Vec<Node<'src>>,
+    },
     Addr(Box<Node<'src>>),
     Deref(Box<Node<'src>>),
     If {
@@ -436,6 +439,25 @@ impl<'src> Parser<'src> {
         self.primary()
     }
 
+    fn funcall(&mut self) -> Node<'src> {
+        let name = self.tokens[self.cursor].raw_str;
+        // ident と "(" を消費
+        self.cursor += 2;
+
+        let mut i = 0;
+        let mut cur = vec![];
+        while !self.consume(")") {
+            if i > 0 {
+                self.expect(",");
+            }
+            i += 1;
+
+            cur.push(self.assign());
+        }
+
+        Node::new(NodeKind::FuncCall { name, args: cur })
+    }
+
     fn primary(&mut self) -> Node<'src> {
         if self.consume("(") {
             let node = self.expr();
@@ -447,11 +469,7 @@ impl<'src> Parser<'src> {
         if token.kind == TokenKind::Ident {
             // FuncCall
             if self.tokens[self.cursor + 1].raw_str == "(" {
-                // ident と "(" を消費
-                self.cursor += 2;
-                let node = Node::new(NodeKind::FuncCall(token.raw_str));
-                self.expect(")");
-                return node;
+                return self.funcall();
             }
 
             // Variable

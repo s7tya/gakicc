@@ -11,6 +11,8 @@ pub struct Codegen<'src> {
     count: usize,
 }
 
+const ARG_REG: &[&str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6"];
+
 impl<'src> Codegen<'src> {
     pub fn new() -> Self {
         Self {
@@ -78,7 +80,18 @@ impl<'src> Codegen<'src> {
             TypedNodeKind::Addr(node) => {
                 self.gen_addr(*node);
             }
-            TypedNodeKind::FuncCall(name) => {
+            TypedNodeKind::FuncCall { name, args } => {
+                let mut nargs = 0;
+                for arg in args.into_iter().rev() {
+                    self.gen_expr(arg);
+                    push("a0");
+                    nargs += 1;
+                }
+
+                for reg in ARG_REG.iter().take(nargs) {
+                    pop(reg);
+                }
+
                 println!("  call {}", name);
             }
             TypedNodeKind::BinOp {
