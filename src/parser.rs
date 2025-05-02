@@ -1,9 +1,12 @@
-use crate::lexer::{Token, TokenKind};
+use crate::{
+    ctype::{CType, CTypeKind},
+    lexer::{Token, TokenKind},
+};
 
 #[derive(Debug)]
 pub struct Function<'src> {
     pub node: Node<'src>,
-    pub locals: Vec<&'src str>,
+    pub locals: Vec<Obj<'src>>, // vars
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -20,10 +23,16 @@ pub enum BinOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Obj<'src> {
+    pub name: &'src str,
+    pub ctype: CType<'src>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NodeKind<'src> {
     Num(i32),
     ExprStmt(Box<Node<'src>>),
-    Var(&'src str),
+    Var(Obj<'src>),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
     Addr(Box<Node<'src>>),
@@ -61,7 +70,7 @@ pub struct Parser<'src> {
     source: &'src str,
     tokens: Vec<Token<'src>>,
     cursor: usize,
-    locals: Vec<&'src str>,
+    locals: Vec<Obj<'src>>,
 }
 
 impl<'src> Parser<'src> {
@@ -75,20 +84,22 @@ impl<'src> Parser<'src> {
     }
 
     pub fn consume(&mut self, op: &str) -> bool {
-        let token = &self.tokens[self.cursor];
-        if token.kind != TokenKind::Reserved || token.raw_str != op {
+        if !self.is_equal(op) {
             return false;
         }
         self.cursor += 1;
         true
     }
 
-    pub fn expect(&mut self, op: &str) {
+    pub fn is_equal(&self, op: &str) -> bool {
         let token = &self.tokens[self.cursor];
-        if token.kind != TokenKind::Reserved || token.raw_str != op {
+        token.raw_str == op
+    }
+
+    pub fn expect(&mut self, op: &str) {
+        if !self.consume(op) {
             self.error_at(&format!("'{}' ではありません", op));
         }
-        self.cursor += 1;
     }
 
     pub fn expect_number(&mut self) -> i32 {
@@ -196,10 +207,78 @@ impl<'src> Parser<'src> {
         self.expr_stmt()
     }
 
+    fn get_ident(&mut self, token: Token<'src>) -> &'src str {
+        if token.kind != TokenKind::Ident {
+            self.expect("expected identifier");
+        }
+
+        token.raw_str
+    }
+
+    fn declspec(&mut self) -> CType<'src> {
+        self.expect("int");
+
+        CType::new(CTypeKind::Int, None)
+    }
+
+    fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+        while self.consume("*") {
+            ty = CType::new(CTypeKind::Ptr(Box::new(ty)), None);
+        }
+
+        if self.tokens[self.cursor].kind != TokenKind::Ident {
+            self.error_at("expected a variable name");
+        }
+
+        ty.name = Some(self.tokens[self.cursor].clone());
+        self.cursor += 1;
+        ty
+    }
+
+    fn declaration(&mut self) -> Node<'src> {
+        let basety = self.declspec();
+
+        let mut i = 0;
+        let mut cur = vec![];
+        while !self.is_equal(";") {
+            if i > 0 {
+                self.expect(",");
+            }
+            i += 1;
+
+            let ty = self.declarator(basety.clone());
+            let obj = Obj {
+                name: self.get_ident(ty.name.clone().unwrap()),
+                ctype: ty,
+            };
+            // TODO: ここどっちか参照にできない？
+            self.locals.push(obj.clone());
+
+            if !self.consume("=") {
+                continue;
+            }
+
+            let lhs = Node::new(NodeKind::Var(obj));
+            let rhs = self.assign();
+            let node = Node::new(NodeKind::BinOp {
+                op: BinOp::Assign,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            });
+            cur.push(Node::new(NodeKind::ExprStmt(Box::new(node))));
+        }
+
+        Node::new(NodeKind::Block(cur))
+    }
+
     fn compound_stmt(&mut self) -> Node<'src> {
         let mut nodes = vec![];
         while !self.consume("}") {
-            nodes.push(self.stmt());
+            nodes.push(if self.is_equal("int") {
+                self.declaration()
+            } else {
+                self.stmt()
+            })
         }
 
         Node::new(NodeKind::Block(nodes))
@@ -365,13 +444,24 @@ impl<'src> Parser<'src> {
 
         let token = &self.tokens[self.cursor];
         if token.kind == TokenKind::Ident {
-            self.locals.push(token.raw_str);
+            let Some(var) = self
+                .locals
+                .iter()
+                .find(|local| local.name == token.raw_str)
+                .cloned()
+            else {
+                self.error_at(&format!("undefined variable: {:?}", self.locals));
+            };
 
             self.cursor += 1;
 
-            return Node::new(NodeKind::Var(token.raw_str));
+            return Node::new(NodeKind::Var(var));
         }
 
-        Node::new(NodeKind::Num(self.expect_number()))
+        if matches!(token.kind, TokenKind::Num(..)) {
+            return Node::new(NodeKind::Num(self.expect_number()));
+        }
+
+        self.error_at("expected an expression");
     }
 }

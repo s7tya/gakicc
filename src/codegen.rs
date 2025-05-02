@@ -1,3 +1,4 @@
+use crate::parser::Obj;
 use std::collections::HashMap;
 
 use crate::{
@@ -23,7 +24,7 @@ impl<'src> Codegen<'src> {
 
         for local in function.locals.into_iter().rev() {
             offset += 8;
-            self.locals.insert(local, -(offset as i32));
+            self.locals.insert(local.name, -(offset as i32));
         }
         let stack_size = align_to(offset, 16);
 
@@ -47,7 +48,7 @@ impl<'src> Codegen<'src> {
 
     fn gen_addr(&self, node: TypedNode) {
         match node.kind {
-            TypedNodeKind::Var(name) => {
+            TypedNodeKind::Var(Obj { name, .. }) => {
                 println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
             }
             TypedNodeKind::Deref(node) => {
@@ -133,7 +134,7 @@ impl<'src> Codegen<'src> {
                 }
             }
 
-            _ => panic!("invalid expression"),
+            _ => panic!("invalid expression: {:?}", node.kind),
         }
     }
 
@@ -188,7 +189,7 @@ impl<'src> Codegen<'src> {
                 self.gen_expr(*node);
             }
             _ => {
-                panic!("invalid statement");
+                panic!("invalid statement: {:?}", node.kind);
             }
         }
     }

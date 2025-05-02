@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
     Reserved,
     Ident,
@@ -6,7 +6,7 @@ pub enum TokenKind {
     Eof,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token<'src> {
     pub kind: TokenKind,
     pub raw_str: &'src str,
@@ -41,7 +41,7 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            for keyword in ["return", "if", "else", "for", "while"] {
+            for keyword in ["return", "if", "else", "for", "while", "int"] {
                 if let Some(rest) = self.source[self.cursor..].strip_prefix(keyword) {
                     if rest.is_empty() || !is_ident_follow(rest.chars().next().unwrap()) {
                         tokens.push(Token {
@@ -56,7 +56,7 @@ impl<'src> Lexer<'src> {
 
             for punct in [
                 "==", "!=", "<=", ">=", "+", "-", "*", "/", "{", "}", "(", ")", "<", ">", ";", "=",
-                "&",
+                "&", ",",
             ] {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {

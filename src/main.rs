@@ -1,5 +1,5 @@
 use core::panic;
-use std::env::args;
+use std::{env::args, io::Write};
 
 use codegen::Codegen;
 use ctype::type_function;
@@ -10,6 +10,15 @@ mod codegen;
 mod ctype;
 mod lexer;
 mod parser;
+
+pub fn log(str: &str) {
+    const FILE_PATH: &str = "log.txt";
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(FILE_PATH)
+        .unwrap_or_else(|_| std::fs::File::create(FILE_PATH).unwrap());
+    f.write_all(format!("{}\n", str).as_bytes()).unwrap();
+}
 
 fn main() {
     let args = args().collect::<Vec<_>>();
@@ -23,6 +32,11 @@ fn main() {
 
     let function = parser.parse();
     let typed_function = type_function(function);
+
+    log(&format!(
+        "analyzing: \"{:?}\"\n{:#?}",
+        &args[1], typed_function
+    ));
 
     let mut codegen = Codegen::new();
     codegen.codegen(typed_function);
