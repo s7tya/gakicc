@@ -32,6 +32,7 @@ impl<'src> Codegen<'src> {
         println!("main:");
 
         // Prologue
+        push("ra");
         push("fp");
         println!("  mv fp, sp");
         println!("  addi sp, sp, -{}", stack_size);
@@ -42,6 +43,7 @@ impl<'src> Codegen<'src> {
         println!(".L.return:");
         println!("  mv sp, fp");
         pop("fp");
+        pop("ra");
 
         println!("  ret");
     }
@@ -75,6 +77,9 @@ impl<'src> Codegen<'src> {
             }
             TypedNodeKind::Addr(node) => {
                 self.gen_addr(*node);
+            }
+            TypedNodeKind::FuncCall(name) => {
+                println!("  call {}", name);
             }
             TypedNodeKind::BinOp {
                 op: BinOp::Assign,

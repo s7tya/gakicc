@@ -35,6 +35,7 @@ pub enum NodeKind<'src> {
     Var(Obj<'src>),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
+    FuncCall(&'src str),
     Addr(Box<Node<'src>>),
     Deref(Box<Node<'src>>),
     If {
@@ -444,6 +445,16 @@ impl<'src> Parser<'src> {
 
         let token = &self.tokens[self.cursor];
         if token.kind == TokenKind::Ident {
+            // FuncCall
+            if self.tokens[self.cursor + 1].raw_str == "(" {
+                // ident と "(" を消費
+                self.cursor += 2;
+                let node = Node::new(NodeKind::FuncCall(token.raw_str));
+                self.expect(")");
+                return node;
+            }
+
+            // Variable
             let Some(var) = self
                 .locals
                 .iter()
