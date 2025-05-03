@@ -3,8 +3,9 @@ use crate::{
     lexer::{Token, TokenKind},
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Function<'src> {
+    pub name: &'src str,
     pub node: Node<'src>,
     pub locals: Vec<Obj<'src>>, // vars
 }
@@ -126,14 +127,33 @@ impl<'src> Parser<'src> {
             self.source,
             "^",
             message,
-            width = self.cursor + 1
+            // TODO: この表示が正しくない。white spaceをスキップしている分と、文字数とトークン数の誤解
+            width = self.cursor
         );
     }
 
-    pub fn parse(&mut self) -> Function {
+    pub fn parse(&mut self) -> Vec<Function> {
+        let mut functions = vec![];
+        while !self.at_eof() {
+            let function = self.function();
+            functions.push(function);
+        }
+
+        functions
+    }
+
+    fn function(&mut self) -> Function<'src> {
+        let mut ty = self.declspec();
+
+        ty = self.declarator(ty);
+
+        self.locals = vec![];
+
+        let name = self.get_ident(ty.name.unwrap());
         self.expect("{");
 
         Function {
+            name,
             node: self.compound_stmt(),
             locals: self.locals.clone(),
         }
@@ -213,7 +233,7 @@ impl<'src> Parser<'src> {
 
     fn get_ident(&mut self, token: Token<'src>) -> &'src str {
         if token.kind != TokenKind::Ident {
-            self.expect("expected identifier");
+            self.error_at(&format!("expected identifier, got {:?}", token));
         }
 
         token.raw_str
@@ -225,6 +245,15 @@ impl<'src> Parser<'src> {
         CType::new(CTypeKind::Int, None)
     }
 
+    fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
+        if self.consume("(") {
+            self.expect(")");
+            return CType::new(CTypeKind::Function(Box::new(ty)), None);
+        }
+
+        ty
+    }
+
     fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
         while self.consume("*") {
             ty = CType::new(CTypeKind::Ptr(Box::new(ty)), None);
@@ -234,8 +263,16 @@ impl<'src> Parser<'src> {
             self.error_at("expected a variable name");
         }
 
-        ty.name = Some(self.tokens[self.cursor].clone());
+        // ident から名前を取得
+        let name = Some(self.tokens[self.cursor].clone());
+        // ident 分カーソルを進める
         self.cursor += 1;
+
+        // その後に "(" ")" が続いた場合に型を関数に変更
+        ty = self.type_suffix(ty);
+        // 名前を設定
+        ty.name = name;
+
         ty
     }
 

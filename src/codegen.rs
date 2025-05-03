@@ -9,6 +9,7 @@ use crate::{
 pub struct Codegen<'src> {
     locals: HashMap<&'src str, i32>,
     count: usize,
+    current_fn_name: Option<&'src str>,
 }
 
 const ARG_REG: &[&str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6"];
@@ -18,36 +19,45 @@ impl<'src> Codegen<'src> {
         Self {
             locals: HashMap::new(),
             count: 0,
+            current_fn_name: None,
         }
     }
 
-    pub fn codegen(&mut self, function: TypedFunction<'src>) {
-        let mut offset = 0;
+    pub fn codegen(&mut self, functions: Vec<TypedFunction<'src>>) {
+        let mut stack_sizes = vec![];
+        for function in &functions {
+            let mut offset = 0;
 
-        for local in function.locals.into_iter().rev() {
-            offset += 8;
-            self.locals.insert(local.name, -(offset as i32));
+            for local in function.locals.iter().rev() {
+                offset += 8;
+                self.locals.insert(local.name, -(offset as i32));
+            }
+            let stack_size = align_to(offset, 16);
+            stack_sizes.push(stack_size);
         }
-        let stack_size = align_to(offset, 16);
 
-        println!("  .global main");
-        println!("main:");
+        for (function_index, function) in functions.into_iter().enumerate() {
+            self.current_fn_name = Some(function.name);
 
-        // Prologue
-        push("ra");
-        push("fp");
-        println!("  mv fp, sp");
-        println!("  addi sp, sp, -{}", stack_size);
+            println!("  .global {}", function.name);
+            println!("{}:", function.name);
 
-        self.gen_stmt(function.node);
+            // Prologue
+            push("ra");
+            push("fp");
+            println!("  mv fp, sp");
+            println!("  addi sp, sp, -{}", stack_sizes[function_index]);
 
-        // Epilogue
-        println!(".L.return:");
-        println!("  mv sp, fp");
-        pop("fp");
-        pop("ra");
+            self.gen_stmt(function.node);
 
-        println!("  ret");
+            // Epilogue
+            println!(".L.return.{}:", function.name);
+            println!("  mv sp, fp");
+            pop("fp");
+            pop("ra");
+
+            println!("  ret");
+        }
     }
 
     fn gen_addr(&self, node: TypedNode) {
@@ -201,7 +211,7 @@ impl<'src> Codegen<'src> {
             }
             TypedNodeKind::Return(node) => {
                 self.gen_expr(*node);
-                println!("  j .L.return");
+                println!("  j .L.return.{}", self.current_fn_name.unwrap());
             }
             TypedNodeKind::ExprStmt(node) => {
                 self.gen_expr(*node);

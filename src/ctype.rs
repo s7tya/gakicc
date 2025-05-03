@@ -11,6 +11,7 @@ use crate::{
 
 #[derive(Debug)]
 pub struct TypedFunction<'src> {
+    pub name: &'src str,
     pub node: TypedNode<'src>,
     pub locals: Vec<Obj<'src>>,
 }
@@ -55,7 +56,8 @@ pub enum TypedNodeKind<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CTypeKind<'src> {
     Int,
-    Ptr(Box<CType<'src>>),
+    Ptr(Box<CType<'src>> /* ポイント先の型 */),
+    Function(Box<CType<'src>> /* 戻り値の型 */),
     Statement,
 }
 
@@ -71,11 +73,15 @@ impl<'src> CType<'src> {
     }
 }
 
-pub fn type_function(function: Function) -> TypedFunction {
-    TypedFunction {
-        node: type_node(function.node),
-        locals: function.locals,
-    }
+pub fn type_functions(functions: Vec<Function>) -> Vec<TypedFunction> {
+    functions
+        .into_iter()
+        .map(|function| TypedFunction {
+            name: function.name,
+            node: type_node(function.node),
+            locals: function.locals,
+        })
+        .collect::<Vec<_>>()
 }
 
 fn type_node(node: Node) -> TypedNode {
@@ -311,7 +317,9 @@ fn type_node(node: Node) -> TypedNode {
                         kind: CTypeKind::Ptr(_),
                         ..
                     },
-                ) => {
+                )
+                // TODO: これ wildcard にしない方がいい気がする
+                | (_, _, _) => {
                     panic!("{:?} {:?} {:?}", lhs, op, rhs)
                 }
             }

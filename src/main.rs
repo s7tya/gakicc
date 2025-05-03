@@ -2,7 +2,7 @@ use core::panic;
 use std::{env::args, io::Write};
 
 use codegen::Codegen;
-use ctype::type_function;
+use ctype::type_functions;
 use lexer::Lexer;
 use parser::Parser;
 
@@ -30,14 +30,9 @@ fn main() {
     let tokens = lexer.lex();
     let mut parser = Parser::new(&args[1], tokens);
 
-    let function = parser.parse();
-    let typed_function = type_function(function);
-
-    log(&format!(
-        "analyzing: \"{:?}\"\n{:#?}",
-        &args[1], typed_function
-    ));
+    let functions = parser.parse();
+    let typed_functions = type_functions(functions);
 
     let mut codegen = Codegen::new();
-    codegen.codegen(typed_function);
+    codegen.codegen(typed_functions);
 }
