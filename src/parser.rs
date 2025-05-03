@@ -8,6 +8,7 @@ pub struct Function<'src> {
     pub name: &'src str,
     pub node: Node<'src>,
     pub locals: Vec<Obj<'src>>, // vars
+    pub params: Vec<Obj<'src>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -132,6 +133,23 @@ impl<'src> Parser<'src> {
         );
     }
 
+    fn new_lvar(&mut self, name: &'src str, ctype: CType<'src>) -> Obj<'src> {
+        // TODO: ここどっちか参照にできない？
+        let obj = Obj { name, ctype };
+        self.locals.push(obj.clone());
+
+        obj
+    }
+
+    fn create_param_lvars(&mut self, ctype: CType<'src>) {
+        if let CTypeKind::Function { params, .. } = ctype.kind {
+            for param in params {
+                let name = self.get_ident(param.name.clone().unwrap());
+                self.new_lvar(name, param);
+            }
+        }
+    }
+
     pub fn parse(&mut self) -> Vec<Function> {
         let mut functions = vec![];
         while !self.at_eof() {
@@ -149,13 +167,16 @@ impl<'src> Parser<'src> {
 
         self.locals = vec![];
 
-        let name = self.get_ident(ty.name.unwrap());
+        let name = self.get_ident(ty.name.clone().unwrap());
+        self.create_param_lvars(ty);
+        let params = self.locals.clone();
         self.expect("{");
 
         Function {
             name,
             node: self.compound_stmt(),
             locals: self.locals.clone(),
+            params,
         }
     }
 
@@ -247,8 +268,27 @@ impl<'src> Parser<'src> {
 
     fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
         if self.consume("(") {
-            self.expect(")");
-            return CType::new(CTypeKind::Function(Box::new(ty)), None);
+            let mut cur = vec![];
+            let mut i = 0;
+
+            while !self.consume(")") {
+                if i > 0 {
+                    self.expect(",");
+                }
+                i += 1;
+
+                let basety = self.declspec();
+                let ty = self.declarator(basety);
+                cur.push(ty);
+            }
+
+            return CType::new(
+                CTypeKind::Function {
+                    return_ty: Box::new(ty),
+                    params: cur,
+                },
+                None,
+            );
         }
 
         ty
@@ -288,12 +328,8 @@ impl<'src> Parser<'src> {
             i += 1;
 
             let ty = self.declarator(basety.clone());
-            let obj = Obj {
-                name: self.get_ident(ty.name.clone().unwrap()),
-                ctype: ty,
-            };
-            // TODO: ここどっちか参照にできない？
-            self.locals.push(obj.clone());
+            let name = self.get_ident(ty.name.clone().unwrap());
+            let obj = self.new_lvar(name, ty);
 
             if !self.consume("=") {
                 continue;

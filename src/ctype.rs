@@ -14,6 +14,7 @@ pub struct TypedFunction<'src> {
     pub name: &'src str,
     pub node: TypedNode<'src>,
     pub locals: Vec<Obj<'src>>,
+    pub params: Vec<Obj<'src>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -57,13 +58,16 @@ pub enum TypedNodeKind<'src> {
 pub enum CTypeKind<'src> {
     Int,
     Ptr(Box<CType<'src>> /* ポイント先の型 */),
-    Function(Box<CType<'src>> /* 戻り値の型 */),
+    Function {
+        return_ty: Box<CType<'src>>,
+        params: Vec<CType<'src>>,
+    },
     Statement,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CType<'src> {
-    kind: CTypeKind<'src>,
+    pub kind: CTypeKind<'src>,
     pub name: Option<Token<'src>>,
 }
 
@@ -80,6 +84,7 @@ pub fn type_functions(functions: Vec<Function>) -> Vec<TypedFunction> {
             name: function.name,
             node: type_node(function.node),
             locals: function.locals,
+            params: function.params,
         })
         .collect::<Vec<_>>()
 }
@@ -133,6 +138,7 @@ fn type_node(node: Node) -> TypedNode {
                     },
                     ctype: lhs_ctype.clone(),
                 },
+                // int _ int -> int
                 (
                     _,
                     CType {
@@ -269,6 +275,7 @@ fn type_node(node: Node) -> TypedNode {
                     }
                 }
 
+                // else
                 (
                     _,
                     CType {
@@ -320,7 +327,7 @@ fn type_node(node: Node) -> TypedNode {
                 )
                 // TODO: これ wildcard にしない方がいい気がする
                 | (_, _, _) => {
-                    panic!("{:?} {:?} {:?}", lhs, op, rhs)
+                    panic!("{:?}\n{:?}\n{:?}", lhs, op, rhs)
                 }
             }
         }
@@ -332,9 +339,8 @@ fn type_node(node: Node) -> TypedNode {
                     .map(|arg| type_node(arg))
                     .collect::<Vec<_>>(),
             },
-            // TODO: FuncCall の型がわからない、statement であってる？
             ctype: CType {
-                kind: CTypeKind::Statement,
+                kind: CTypeKind::Int,
                 name: None,
             },
         },

@@ -48,6 +48,11 @@ impl<'src> Codegen<'src> {
             println!("  mv fp, sp");
             println!("  addi sp, sp, -{}", stack_sizes[function_index]);
 
+            for (param, reg) in function.params.iter().zip(ARG_REG) {
+                let offset = self.locals.get(param.name).unwrap();
+                println!("  sd {}, {}(fp)", reg, offset);
+            }
+
             self.gen_stmt(function.node);
 
             // Epilogue
