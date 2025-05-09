@@ -20,7 +20,7 @@ pub struct TypedFunction<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypedNode<'src> {
     pub kind: TypedNodeKind<'src>,
-    pub ctype: CType<'src>,
+    pub ctype: Option<CType<'src>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -62,18 +62,26 @@ pub enum CTypeKind<'src> {
         return_ty: Box<CType<'src>>,
         params: Vec<CType<'src>>,
     },
-    Statement,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct CType<'src> {
     pub kind: CTypeKind<'src>,
     pub name: Option<Token<'src>>,
+    size: usize,
 }
 
 impl<'src> CType<'src> {
-    pub fn new(kind: CTypeKind<'src>, name: Option<Token<'src>>) -> Self {
-        CType { kind, name }
+    pub fn new(kind: CTypeKind<'src>, name: Option<Token<'src>>, size: usize) -> Self {
+        CType { kind, name, size }
+    }
+
+    pub fn pointer_to(base: CType<'src>) -> Self {
+        Self {
+            kind: CTypeKind::Ptr(Box::new(base)),
+            name: None,
+            size: 8,
+        }
     }
 }
 
@@ -93,17 +101,18 @@ fn type_node(node: Node) -> TypedNode {
     match node.kind {
         NodeKind::Num(value) => TypedNode {
             kind: TypedNodeKind::Num(value),
-            ctype: CType {
+            ctype: Some(CType {
                 kind: CTypeKind::Int,
                 name: None,
-            },
+                size: 8,
+            }),
         },
         NodeKind::Var(Obj { name, ctype }) => TypedNode {
             kind: TypedNodeKind::Var(Obj {
                 name,
                 ctype: ctype.clone(),
             }),
-            ctype,
+            ctype: Some(ctype),
         },
         NodeKind::BinOp {
             op: op @ (BinOp::Eq | BinOp::Ne | BinOp::Le | BinOp::Lt),
@@ -119,10 +128,11 @@ fn type_node(node: Node) -> TypedNode {
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
                 },
-                ctype: CType {
+                ctype: Some(CType {
                     kind: CTypeKind::Int,
                     name: None,
-                },
+                    size: 8,
+                }),
             }
         }
         NodeKind::BinOp { op, lhs, rhs } => {
@@ -141,36 +151,39 @@ fn type_node(node: Node) -> TypedNode {
                 // int _ int -> int
                 (
                     _,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Int,
                         ..
-                    },
-                    CType {
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Int,
                         ..
-                    },
+                    }),
                 ) => TypedNode {
                     kind: TypedNodeKind::BinOp {
                         op,
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
                     },
-                    ctype: CType {
+                    ctype: Some(CType {
                         kind: CTypeKind::Int,
                         name: None,
-                    },
+                        size: 8
+                    }),
                 },
                 // int + ptr -> ptr
                 (
                     BinOp::Add,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Int,
                         name: None,
-                    },
-                    CType {
+                        size: 8
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Ptr(ctype),
                         name: None,
-                    },
+                        size: 8
+                    }),
                 ) => {
                     let lhs = TypedNode {
                         kind: TypedNodeKind::BinOp {
@@ -180,10 +193,11 @@ fn type_node(node: Node) -> TypedNode {
                                 kind: NodeKind::Num(8),
                             })),
                         },
-                        ctype: CType {
+                        ctype: Some(CType {
                             kind: CTypeKind::Int,
                             name: None,
-                        },
+                            size: 8
+                        }),
                     };
 
                     TypedNode {
@@ -192,23 +206,22 @@ fn type_node(node: Node) -> TypedNode {
                             lhs: Box::new(lhs),
                             rhs: Box::new(rhs),
                         },
-                        ctype: CType {
-                            kind: CTypeKind::Ptr(ctype.clone()),
-                            name: None,
-                        },
+                        ctype: Some(CType::pointer_to(*ctype.clone())),
                     }
                 }
                 // ptr + int, ptr - int
                 (
                     BinOp::Add | BinOp::Sub,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Ptr(ctype),
                         name: None,
-                    },
-                    CType {
+                        size: 8
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Int,
                         name: None,
-                    },
+                        size: 8
+                    }),
                 ) => {
                     let rhs = TypedNode {
                         kind: TypedNodeKind::BinOp {
@@ -218,10 +231,11 @@ fn type_node(node: Node) -> TypedNode {
                                 kind: NodeKind::Num(8),
                             })),
                         },
-                        ctype: CType {
+                        ctype: Some(CType {
                             kind: CTypeKind::Int,
                             name: None,
-                        },
+                            size: 8
+                        }),
                     };
 
                     TypedNode {
@@ -230,23 +244,20 @@ fn type_node(node: Node) -> TypedNode {
                             lhs: Box::new(lhs),
                             rhs: Box::new(rhs),
                         },
-                        ctype: CType {
-                            kind: CTypeKind::Ptr(ctype.clone()),
-                            name: None,
-                        },
+                        ctype: Some(CType::pointer_to(*ctype.clone())),
                     }
                 }
                 // ptr - ptr
                 (
                     BinOp::Sub,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
-                    CType {
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
+                    }),
                 ) => {
                     let typed_node = TypedNode {
                         kind: TypedNodeKind::BinOp {
@@ -254,10 +265,11 @@ fn type_node(node: Node) -> TypedNode {
                             lhs: Box::new(lhs),
                             rhs: Box::new(rhs),
                         },
-                        ctype: CType {
+                        ctype: Some(CType {
                             kind: CTypeKind::Int,
                             name: None,
-                        },
+                            size: 8
+                        }),
                     };
 
                     TypedNode {
@@ -268,62 +280,57 @@ fn type_node(node: Node) -> TypedNode {
                                 kind: NodeKind::Num(8),
                             })),
                         },
-                        ctype: CType {
+                        ctype: Some(CType {
                             kind: CTypeKind::Int,
                             name: None,
-                        },
+                            size: 8
+                        }),
                     }
                 }
 
                 // else
                 (
                     _,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Int,
                         ..
-                    },
-                    CType {
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
+                    }),
                 )
                 | (
                     _,
-                    CType {
-                        kind: CTypeKind::Statement,
-                        ..
-                    },
+                    None,
                     _,
                 )
                 | (
                     _,
                     _,
-                    CType {
-                        kind: CTypeKind::Statement,
-                        ..
-                    },
+                    None,
                 )
                 | (
                     _,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
-                    CType {
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Int,
                         ..
-                    },
+                    }),
                 )
                 | (
                     _,
-                    CType {
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
-                    CType {
+                    }),
+                    Some(CType {
                         kind: CTypeKind::Ptr(_),
                         ..
-                    },
+                    }),
                 )
                 // TODO: これ wildcard にしない方がいい気がする
                 | (_, _, _) => {
@@ -339,32 +346,30 @@ fn type_node(node: Node) -> TypedNode {
                     .map(|arg| type_node(arg))
                     .collect::<Vec<_>>(),
             },
-            ctype: CType {
+            ctype: Some(CType {
                 kind: CTypeKind::Int,
                 name: None,
-            },
+                size: 8,
+            }),
         },
         NodeKind::Addr(node) => {
             let typed_node = type_node(*node);
             let ctype = match typed_node.kind {
-                TypedNodeKind::Var{..} /* | TypedNodeKind::Deref(_) */ => CType {
-                    kind: CTypeKind::Ptr(Box::new(typed_node.ctype.clone())),
-                    name: None,
-                },
+                TypedNodeKind::Var{..} /* | TypedNodeKind::Deref(_) */ => CType::pointer_to(typed_node.ctype.clone().unwrap()),
                 _ => panic!(),
             };
 
             TypedNode {
                 kind: TypedNodeKind::Addr(Box::new(typed_node)),
-                ctype,
+                ctype: Some(ctype),
             }
         }
         NodeKind::Deref(node) => {
             let typed_node = type_node(*node);
-            if let CTypeKind::Ptr(base) = &typed_node.ctype.kind.clone() {
+            if let CTypeKind::Ptr(base) = &typed_node.ctype.clone().unwrap().kind {
                 return TypedNode {
                     kind: TypedNodeKind::Deref(Box::new(typed_node)),
-                    ctype: (**base).clone(),
+                    ctype: Some((**base).clone()),
                 };
             }
 
@@ -374,30 +379,21 @@ fn type_node(node: Node) -> TypedNode {
             let typed_node = Box::new(type_node(*node));
             TypedNode {
                 kind: TypedNodeKind::ExprStmt(typed_node),
-                ctype: CType {
-                    kind: CTypeKind::Statement,
-                    name: None,
-                },
+                ctype: None,
             }
         }
         NodeKind::Return(node) => {
             let typed_node = Box::new(type_node(*node));
             TypedNode {
                 kind: TypedNodeKind::Return(typed_node),
-                ctype: CType {
-                    kind: CTypeKind::Statement,
-                    name: None,
-                },
+                ctype: None,
             }
         }
         NodeKind::Block(nodes) => {
             let typed_nodes = nodes.into_iter().map(type_node).collect::<Vec<_>>();
             TypedNode {
                 kind: TypedNodeKind::Block(typed_nodes),
-                ctype: CType {
-                    kind: CTypeKind::Statement,
-                    name: None,
-                },
+                ctype: None,
             }
         }
         NodeKind::If { cond, then, els } => {
@@ -407,10 +403,7 @@ fn type_node(node: Node) -> TypedNode {
 
             TypedNode {
                 kind: TypedNodeKind::If { cond, then, els },
-                ctype: CType {
-                    kind: CTypeKind::Statement,
-                    name: None,
-                },
+                ctype: None,
             }
         }
         NodeKind::For {
@@ -431,10 +424,7 @@ fn type_node(node: Node) -> TypedNode {
                     inc,
                     then,
                 },
-                ctype: CType {
-                    kind: CTypeKind::Statement,
-                    name: None,
-                },
+                ctype: None,
             }
         }
     }

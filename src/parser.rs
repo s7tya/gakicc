@@ -263,7 +263,7 @@ impl<'src> Parser<'src> {
     fn declspec(&mut self) -> CType<'src> {
         self.expect("int");
 
-        CType::new(CTypeKind::Int, None)
+        CType::new(CTypeKind::Int, None, 8)
     }
 
     fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
@@ -287,7 +287,9 @@ impl<'src> Parser<'src> {
                     return_ty: Box::new(ty),
                     params: cur,
                 },
+                // TODO: ここの name と size がこれでいいかわからない
                 None,
+                0,
             );
         }
 
@@ -296,7 +298,7 @@ impl<'src> Parser<'src> {
 
     fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
         while self.consume("*") {
-            ty = CType::new(CTypeKind::Ptr(Box::new(ty)), None);
+            ty = CType::pointer_to(ty);
         }
 
         if self.tokens[self.cursor].kind != TokenKind::Ident {
