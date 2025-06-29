@@ -12,7 +12,7 @@ pub struct Codegen<'src> {
     current_fn_name: Option<&'src str>,
 }
 
-const ARG_REG: &[&str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6"];
+const ARG_REG: &[&str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
 
 impl<'src> Codegen<'src> {
     pub fn new() -> Self {
