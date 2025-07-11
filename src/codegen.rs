@@ -50,7 +50,7 @@ impl<'src> Codegen<'src> {
 
             for (param, reg) in function.params.iter().zip(ARG_REG) {
                 let offset = self.locals.get(param.name).unwrap();
-                println!("  sd {}, {}(fp)", reg, offset);
+                println!("  sd {reg}, {offset}(fp)");
             }
 
             self.gen_stmt(function.node);
@@ -74,7 +74,7 @@ impl<'src> Codegen<'src> {
                 self.gen_expr(*node);
             }
             _ => {
-                panic!("{:?} is not an lvalue", node);
+                panic!("{node:?} is not an lvalue");
             }
         }
     }
@@ -82,7 +82,7 @@ impl<'src> Codegen<'src> {
     fn gen_expr(&self, node: TypedNode) {
         match node.kind {
             TypedNodeKind::Num(value) => {
-                println!("  li a0, {}", value);
+                println!("  li a0, {value}");
             }
             TypedNodeKind::Var(_) => {
                 self.gen_addr(node);
@@ -107,7 +107,7 @@ impl<'src> Codegen<'src> {
                     pop(reg);
                 }
 
-                println!("  call {}", name);
+                println!("  call {name}");
             }
             TypedNodeKind::BinOp {
                 op: BinOp::Assign,
@@ -233,13 +233,13 @@ fn align_to(n: usize, align: usize) -> usize {
 }
 
 fn push(reg: &str) {
-    println!("  # push {}", reg);
+    println!("  # push {reg}");
     println!("  addi sp, sp, -8");
-    println!("  sd {}, 0(sp)", reg);
+    println!("  sd {reg}, 0(sp)");
 }
 
 fn pop(reg: &str) {
-    println!("  # pop {}", reg);
-    println!("  ld {}, 0(sp)", reg);
+    println!("  # pop {reg}");
+    println!("  ld {reg}, 0(sp)");
     println!("  addi sp, sp, 8");
 }

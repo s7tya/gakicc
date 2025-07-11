@@ -334,7 +334,7 @@ fn type_node(node: Node) -> TypedNode {
                 )
                 // TODO: これ wildcard にしない方がいい気がする
                 | (_, _, _) => {
-                    panic!("{:?}\n{:?}\n{:?}", lhs, op, rhs)
+                    panic!("{lhs:?}\n{op:?}\n{rhs:?}")
                 }
             }
         }

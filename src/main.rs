@@ -17,7 +17,7 @@ pub fn log(str: &str) {
         .append(true)
         .open(FILE_PATH)
         .unwrap_or_else(|_| std::fs::File::create(FILE_PATH).unwrap());
-    f.write_all(format!("{}\n", str).as_bytes()).unwrap();
+    f.write_all(format!("{str}\n").as_bytes()).unwrap();
 }
 
 fn main() {

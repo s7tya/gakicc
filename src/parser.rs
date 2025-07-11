@@ -104,7 +104,7 @@ impl<'src> Parser<'src> {
 
     pub fn expect(&mut self, op: &str) {
         if !self.consume(op) {
-            self.error_at(&format!("'{}' ではありません", op));
+            self.error_at(&format!("'{op}' ではありません"));
         }
     }
 
@@ -254,7 +254,7 @@ impl<'src> Parser<'src> {
 
     fn get_ident(&mut self, token: Token<'src>) -> &'src str {
         if token.kind != TokenKind::Ident {
-            self.error_at(&format!("expected identifier, got {:?}", token));
+            self.error_at(&format!("expected identifier, got {token:?}"));
         }
 
         token.raw_str
