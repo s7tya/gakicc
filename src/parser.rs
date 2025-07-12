@@ -521,7 +521,23 @@ impl<'src> Parser<'src> {
             return Node::new(NodeKind::Deref(Box::new(self.unary())));
         }
 
-        self.primary()
+        self.postfix()
+    }
+
+    fn postfix(&mut self) -> Node<'src> {
+        let mut node = self.primary();
+
+        while self.consume("[") {
+            let idx = self.expr();
+            self.expect("]");
+            node = Node::new(NodeKind::Deref(Box::new(Node::new(NodeKind::BinOp {
+                op: BinOp::Add,
+                lhs: Box::new(node),
+                rhs: Box::new(idx),
+            }))))
+        }
+
+        node
     }
 
     fn funcall(&mut self) -> Node<'src> {
