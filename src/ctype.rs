@@ -1,20 +1,56 @@
 use crate::{
     lexer::Token,
-    parser::{
-        BinOp,
-        Function,
-        Node,
-        NodeKind,
-        Obj, // TODO: Obj も Typed があった方がいい？元から型ついてるけど
-    },
+    parser::{BinOp, Node, NodeKind, Object, ObjectKind},
 };
 
-#[derive(Debug)]
-pub struct TypedFunction<'src> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct TypedObject<'src> {
     pub name: &'src str,
-    pub node: TypedNode<'src>,
-    pub locals: Vec<Obj<'src>>,
-    pub params: Vec<Obj<'src>>,
+    pub kind: TypedObjectKind<'src>,
+}
+
+impl<'src> From<Object<'src>> for TypedObject<'src> {
+    fn from(object: Object<'src>) -> TypedObject<'src> {
+        TypedObject {
+            name: object.name,
+            kind: object.kind.into(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum TypedObjectKind<'src> {
+    Object {
+        ctype: CType<'src>,
+    },
+    Function {
+        node: TypedNode<'src>,
+        locals: Vec<TypedObject<'src>>,
+        params: Vec<TypedObject<'src>>,
+    },
+}
+
+impl<'src> From<ObjectKind<'src>> for TypedObjectKind<'src> {
+    fn from(kind: ObjectKind<'src>) -> Self {
+        match kind {
+            ObjectKind::Object { ctype } => TypedObjectKind::Object { ctype },
+            ObjectKind::Function {
+                node,
+                locals,
+                params,
+            } => TypedObjectKind::Function {
+                node: (node).into(),
+                locals: locals
+                    .into_iter()
+                    .map(|local| local.into())
+                    .collect::<Vec<_>>(),
+                params: params
+                    .into_iter()
+                    .map(|param| param.into())
+                    .collect::<Vec<_>>(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -27,7 +63,7 @@ pub struct TypedNode<'src> {
 pub enum TypedNodeKind<'src> {
     Num(i32),
     ExprStmt(Box<TypedNode<'src>>),
-    Var(Obj<'src>),
+    Var(Box<TypedObject<'src>>),
     Return(Box<TypedNode<'src>>),
     Block(Vec<TypedNode<'src>>),
     FuncCall {
@@ -89,18 +125,6 @@ impl<'src> CType<'src> {
     }
 }
 
-pub fn type_functions(functions: Vec<Function>) -> Vec<TypedFunction> {
-    functions
-        .into_iter()
-        .map(|function| TypedFunction {
-            name: function.name,
-            node: type_node(function.node),
-            locals: function.locals,
-            params: function.params,
-        })
-        .collect::<Vec<_>>()
-}
-
 pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
     let size = base.size;
     CType::new(
@@ -113,49 +137,62 @@ pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
     )
 }
 
-pub fn type_node(node: Node) -> TypedNode {
-    match node.kind {
-        NodeKind::Num(value) => TypedNode {
-            kind: TypedNodeKind::Num(value),
-            ctype: Some(CType {
-                kind: CTypeKind::Int,
-                name: None,
-                size: 8,
-            }),
-        },
-        NodeKind::Var(Obj { name, ctype }) => TypedNode {
-            kind: TypedNodeKind::Var(Obj {
-                name,
-                ctype: ctype.clone(),
-            }),
-            ctype: Some(ctype),
-        },
-        NodeKind::BinOp {
-            op: op @ (BinOp::Eq | BinOp::Ne | BinOp::Le | BinOp::Lt),
-            lhs,
-            rhs,
-        } => {
-            let lhs = type_node(*lhs);
-            let rhs = type_node(*rhs);
-
-            TypedNode {
-                kind: TypedNodeKind::BinOp {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                },
+impl<'src> From<Node<'src>> for TypedNode<'src> {
+    fn from(node: Node) -> TypedNode {
+        match node.kind {
+            NodeKind::Num(value) => TypedNode {
+                kind: TypedNodeKind::Num(value),
                 ctype: Some(CType {
                     kind: CTypeKind::Int,
                     name: None,
                     size: 8,
                 }),
-            }
-        }
-        NodeKind::BinOp { op, lhs, rhs } => {
-            let lhs = type_node(*lhs);
-            let rhs = type_node(*rhs);
+            },
+            NodeKind::Var(object) => {
+                if let Object {
+                    name,
+                    kind: ObjectKind::Object { ctype },
+                } = *object
+                {
+                    return TypedNode {
+                        kind: TypedNodeKind::Var(Box::new(TypedObject {
+                            name,
+                            kind: TypedObjectKind::Object {
+                                ctype: ctype.clone(),
+                            },
+                        })),
+                        ctype: Some(ctype),
+                    };
+                }
 
-            match (&op, lhs.ctype.clone(), rhs.ctype.clone()) {
+                panic!("{object:?} is not ObjectKind::Object")
+            }
+            NodeKind::BinOp {
+                op: op @ (BinOp::Eq | BinOp::Ne | BinOp::Le | BinOp::Lt),
+                lhs,
+                rhs,
+            } => {
+                let lhs = (*lhs).into();
+                let rhs = (*rhs).into();
+
+                TypedNode {
+                    kind: TypedNodeKind::BinOp {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
+                    ctype: Some(CType {
+                        kind: CTypeKind::Int,
+                        name: None,
+                        size: 8,
+                    }),
+                }
+            }
+            NodeKind::BinOp { op, lhs, rhs } => {
+                let lhs: TypedNode<'_> = (*lhs).into();
+                let rhs: TypedNode<'_> = (*rhs).into();
+
+                match (&op, lhs.ctype.clone(), rhs.ctype.clone()) {
                 (BinOp::Assign, lhs_ctype, _) => {
                     if let CTypeKind::Array { .. }  = lhs_ctype.clone().unwrap().kind {
                         panic!("not a lvalue");
@@ -209,9 +246,9 @@ pub fn type_node(node: Node) -> TypedNode {
                         kind: TypedNodeKind::BinOp {
                             op: BinOp::Mul,
                             lhs: Box::new(lhs),
-                            rhs: Box::new(type_node(Node {
+                            rhs: Box::new((Node {
                                 kind: NodeKind::Num(ctype.size as i32),
-                            })),
+                            }).into()),
                         },
                         ctype: Some(CType {
                             kind: CTypeKind::Int,
@@ -246,9 +283,9 @@ pub fn type_node(node: Node) -> TypedNode {
                         kind: TypedNodeKind::BinOp {
                             op: BinOp::Mul,
                             lhs: Box::new(rhs),
-                            rhs: Box::new(type_node(Node {
+                            rhs: Box::new((Node {
                                 kind: NodeKind::Num(ctype.size as i32),
-                            })),
+                            }).into()),
                         },
                         ctype: Some(CType {
                             kind: CTypeKind::Int,
@@ -297,9 +334,9 @@ pub fn type_node(node: Node) -> TypedNode {
                         kind: TypedNodeKind::BinOp {
                             op: BinOp::Div,
                             lhs: Box::new(typed_node),
-                            rhs: Box::new(type_node(Node {
+                            rhs: Box::new((Node {
                                 kind: NodeKind::Num(lhs_basety.size as i32),
-                            })),
+                            }).into()),
                         },
                         ctype: Some(CType {
                             kind: CTypeKind::Int,
@@ -358,105 +395,106 @@ pub fn type_node(node: Node) -> TypedNode {
                     panic!("{lhs:?}\n{op:?}\n{rhs:?}")
                 }
             }
-        }
-        NodeKind::FuncCall { name, args } => TypedNode {
-            kind: TypedNodeKind::FuncCall {
-                name,
-                args: args
-                    .into_iter()
-                    .map(|arg| type_node(arg))
-                    .collect::<Vec<_>>(),
-            },
-            ctype: Some(CType {
-                kind: CTypeKind::Int,
-                name: None,
-                size: 8,
-            }),
-        },
-        NodeKind::Addr(node) => {
-            let typed_node = type_node(*node);
-            let ctype = match (&typed_node.ctype, &typed_node.kind) {
-                (
-                    Some(CType {
-                        kind: CTypeKind::Array { base, .. },
-                        ..
-                    }),
-                    _,
-                ) => CType::pointer_to((**base).clone()),
-                (Some(ty), TypedNodeKind::Var { .. } /* | TypedNodeKind::Deref(_) */) => {
-                    CType::pointer_to(ty.clone())
-                }
-                _ => panic!("invalid operand for &"),
-            };
-
-            TypedNode {
-                kind: TypedNodeKind::Addr(Box::new(typed_node)),
-                ctype: Some(ctype),
             }
-        }
-        NodeKind::Deref(node) => {
-            let typed_node = type_node(*node);
-            if let CTypeKind::Array { base, .. } | CTypeKind::Ptr(base) =
-                &typed_node.ctype.clone().unwrap().kind
-            {
-                return TypedNode {
-                    kind: TypedNodeKind::Deref(Box::new(typed_node)),
-                    ctype: Some((**base).clone()),
-                };
-            }
-
-            panic!("invalid pointer dereference")
-        }
-        NodeKind::ExprStmt(node) => {
-            let typed_node = Box::new(type_node(*node));
-            TypedNode {
-                kind: TypedNodeKind::ExprStmt(typed_node),
-                ctype: None,
-            }
-        }
-        NodeKind::Return(node) => {
-            let typed_node = Box::new(type_node(*node));
-            TypedNode {
-                kind: TypedNodeKind::Return(typed_node),
-                ctype: None,
-            }
-        }
-        NodeKind::Block(nodes) => {
-            let typed_nodes = nodes.into_iter().map(type_node).collect::<Vec<_>>();
-            TypedNode {
-                kind: TypedNodeKind::Block(typed_nodes),
-                ctype: None,
-            }
-        }
-        NodeKind::If { cond, then, els } => {
-            let cond = Box::new(type_node(*cond));
-            let then = Box::new(type_node(*then));
-            let els = els.map(|node| Box::new(type_node(*node)));
-
-            TypedNode {
-                kind: TypedNodeKind::If { cond, then, els },
-                ctype: None,
-            }
-        }
-        NodeKind::For {
-            init,
-            cond,
-            inc,
-            then,
-        } => {
-            let init = init.map(|node| Box::new(type_node(*node)));
-            let cond = cond.map(|node| Box::new(type_node(*node)));
-            let inc = inc.map(|node| Box::new(type_node(*node)));
-            let then = Box::new(type_node(*then));
-
-            TypedNode {
-                kind: TypedNodeKind::For {
-                    init,
-                    cond,
-                    inc,
-                    then,
+            NodeKind::FuncCall { name, args } => TypedNode {
+                kind: TypedNodeKind::FuncCall {
+                    name,
+                    args: args.into_iter().map(|arg| arg.into()).collect::<Vec<_>>(),
                 },
-                ctype: None,
+                ctype: Some(CType {
+                    kind: CTypeKind::Int,
+                    name: None,
+                    size: 8,
+                }),
+            },
+            NodeKind::Addr(node) => {
+                let typed_node: TypedNode<'_> = (*node).into();
+                let ctype = match (&typed_node.ctype, &typed_node.kind) {
+                    (
+                        Some(CType {
+                            kind: CTypeKind::Array { base, .. },
+                            ..
+                        }),
+                        _,
+                    ) => CType::pointer_to((**base).clone()),
+                    (Some(ty), TypedNodeKind::Var { .. } /* | TypedNodeKind::Deref(_) */) => {
+                        CType::pointer_to(ty.clone())
+                    }
+                    _ => panic!("invalid operand for &"),
+                };
+
+                TypedNode {
+                    kind: TypedNodeKind::Addr(Box::new(typed_node)),
+                    ctype: Some(ctype),
+                }
+            }
+            NodeKind::Deref(node) => {
+                let typed_node: TypedNode<'_> = (*node).into();
+                if let CTypeKind::Array { base, .. } | CTypeKind::Ptr(base) =
+                    &typed_node.ctype.clone().unwrap().kind
+                {
+                    return TypedNode {
+                        kind: TypedNodeKind::Deref(Box::new(typed_node)),
+                        ctype: Some((**base).clone()),
+                    };
+                }
+
+                panic!("invalid pointer dereference")
+            }
+            NodeKind::ExprStmt(node) => {
+                let typed_node = Box::new((*node).into());
+                TypedNode {
+                    kind: TypedNodeKind::ExprStmt(typed_node),
+                    ctype: None,
+                }
+            }
+            NodeKind::Return(node) => {
+                let typed_node = Box::new((*node).into());
+                TypedNode {
+                    kind: TypedNodeKind::Return(typed_node),
+                    ctype: None,
+                }
+            }
+            NodeKind::Block(nodes) => {
+                let typed_nodes = nodes
+                    .into_iter()
+                    .map(|node| node.into())
+                    .collect::<Vec<_>>();
+                TypedNode {
+                    kind: TypedNodeKind::Block(typed_nodes),
+                    ctype: None,
+                }
+            }
+            NodeKind::If { cond, then, els } => {
+                let cond = Box::new((*cond).into());
+                let then = Box::new((*then).into());
+                let els = els.map(|node| Box::new((*node).into()));
+
+                TypedNode {
+                    kind: TypedNodeKind::If { cond, then, els },
+                    ctype: None,
+                }
+            }
+            NodeKind::For {
+                init,
+                cond,
+                inc,
+                then,
+            } => {
+                let init = init.map(|node| Box::new((*node).into()));
+                let cond = cond.map(|node| Box::new((*node).into()));
+                let inc = inc.map(|node| Box::new((*node).into()));
+                let then = Box::new((*then).into());
+
+                TypedNode {
+                    kind: TypedNodeKind::For {
+                        init,
+                        cond,
+                        inc,
+                        then,
+                    },
+                    ctype: None,
+                }
             }
         }
     }

@@ -1,14 +1,24 @@
 use crate::{
-    ctype::{CType, CTypeKind, array_of, type_node},
+    ctype::{CType, CTypeKind, TypedNode, array_of},
     lexer::{Token, TokenKind},
 };
 
-#[derive(Debug, Clone)]
-pub struct Function<'src> {
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Object<'src> {
     pub name: &'src str,
-    pub node: Node<'src>,
-    pub locals: Vec<Obj<'src>>, // vars
-    pub params: Vec<Obj<'src>>,
+    pub kind: ObjectKind<'src>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum ObjectKind<'src> {
+    Object {
+        ctype: CType<'src>,
+    },
+    Function {
+        node: Node<'src>,
+        locals: Vec<Object<'src>>,
+        params: Vec<Object<'src>>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -25,16 +35,10 @@ pub enum BinOp {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Obj<'src> {
-    pub name: &'src str,
-    pub ctype: CType<'src>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum NodeKind<'src> {
     Num(i32),
     ExprStmt(Box<Node<'src>>),
-    Var(Obj<'src>),
+    Var(Box<Object<'src>>),
     Return(Box<Node<'src>>),
     Block(Vec<Node<'src>>),
     FuncCall {
@@ -76,7 +80,8 @@ pub struct Parser<'src> {
     source: &'src str,
     tokens: Vec<Token<'src>>,
     cursor: usize,
-    locals: Vec<Obj<'src>>,
+    locals: Vec<Object<'src>>,
+    globals: Vec<Object<'src>>,
 }
 
 impl<'src> Parser<'src> {
@@ -86,6 +91,7 @@ impl<'src> Parser<'src> {
             tokens,
             cursor: 0,
             locals: vec![],
+            globals: vec![],
         }
     }
 
@@ -133,9 +139,12 @@ impl<'src> Parser<'src> {
         );
     }
 
-    fn new_lvar(&mut self, name: &'src str, ctype: CType<'src>) -> Obj<'src> {
+    fn new_lvar(&mut self, name: &'src str, ctype: CType<'src>) -> Object<'src> {
         // TODO: ここどっちか参照にできない？
-        let obj = Obj { name, ctype };
+        let obj = Object {
+            name,
+            kind: ObjectKind::Object { ctype },
+        };
         self.locals.push(obj.clone());
 
         obj
@@ -150,7 +159,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Function> {
+    pub fn parse(&mut self) -> Vec<Object> {
         let mut functions = vec![];
         while !self.at_eof() {
             let function = self.function();
@@ -160,7 +169,7 @@ impl<'src> Parser<'src> {
         functions
     }
 
-    fn function(&mut self) -> Function<'src> {
+    fn function(&mut self) -> Object<'src> {
         let mut ty = self.declspec();
 
         ty = self.declarator(ty);
@@ -172,11 +181,13 @@ impl<'src> Parser<'src> {
         let params = self.locals.clone();
         self.expect("{");
 
-        Function {
+        Object {
             name,
-            node: self.compound_stmt(),
-            locals: self.locals.clone(),
-            params,
+            kind: ObjectKind::Function {
+                node: self.compound_stmt(),
+                locals: self.locals.clone(),
+                params,
+            },
         }
     }
 
@@ -347,7 +358,7 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
-            let lhs = Node::new(NodeKind::Var(obj));
+            let lhs = Node::new(NodeKind::Var(Box::new(obj)));
             let rhs = self.assign();
             let node = Node::new(NodeKind::BinOp {
                 op: BinOp::Assign,
@@ -503,7 +514,7 @@ impl<'src> Parser<'src> {
     fn unary(&mut self) -> Node<'src> {
         if self.consume("sizeof") {
             let node = self.unary();
-            let typed_node = type_node(node);
+            let typed_node: TypedNode<'_> = node.into();
             return Node::new(NodeKind::Num(typed_node.ctype.unwrap().size as i32));
         }
 
@@ -591,7 +602,7 @@ impl<'src> Parser<'src> {
 
             self.cursor += 1;
 
-            return Node::new(NodeKind::Var(var));
+            return Node::new(NodeKind::Var(Box::new(var)));
         }
 
         if matches!(token.kind, TokenKind::Num(..)) {

@@ -1,11 +1,8 @@
-use crate::{
-    ctype::{CType, CTypeKind},
-    parser::Obj,
-};
+use crate::ctype::{CType, CTypeKind, TypedObjectKind};
 use std::collections::HashMap;
 
 use crate::{
-    ctype::{TypedFunction, TypedNode, TypedNodeKind},
+    ctype::{TypedNode, TypedNodeKind, TypedObject},
     parser::BinOp,
 };
 
@@ -26,52 +23,70 @@ impl<'src> Codegen<'src> {
         }
     }
 
-    pub fn codegen(&mut self, functions: Vec<TypedFunction<'src>>) {
+    pub fn codegen(&mut self, functions: Vec<TypedObject<'src>>) {
         let mut stack_sizes = vec![];
         for function in &functions {
-            let mut offset = 0;
+            if let TypedObject {
+                kind: TypedObjectKind::Function { locals, .. },
+                ..
+            } = function
+            {
+                let mut offset = 0;
 
-            for local in function.locals.iter().rev() {
-                offset += local.ctype.size;
-                self.locals.insert(local.name, -(offset as i32));
+                for local in locals.iter().rev() {
+                    if let TypedObject {
+                        kind: TypedObjectKind::Object { ctype },
+                        ..
+                    } = local
+                    {
+                        offset += ctype.size;
+                        self.locals.insert(local.name, -(offset as i32));
+                    }
+                }
+                let stack_size = align_to(offset, 16);
+                stack_sizes.push(stack_size);
             }
-            let stack_size = align_to(offset, 16);
-            stack_sizes.push(stack_size);
         }
 
         for (function_index, function) in functions.into_iter().enumerate() {
-            self.current_fn_name = Some(function.name);
+            if let TypedObject {
+                name,
+                kind: TypedObjectKind::Function { node, params, .. },
+            } = function
+            {
+                self.current_fn_name = Some(name);
 
-            println!("  .global {}", function.name);
-            println!("{}:", function.name);
+                println!("  .global {name}");
+                println!("{name}:");
 
-            // Prologue
-            push("ra");
-            push("fp");
-            println!("  mv fp, sp");
-            println!("  addi sp, sp, -{}", stack_sizes[function_index]);
+                // Prologue
+                push("ra");
+                push("fp");
+                println!("  mv fp, sp");
+                println!("  addi sp, sp, -{}", stack_sizes[function_index]);
 
-            for (param, reg) in function.params.iter().zip(ARG_REG) {
-                let offset = self.locals.get(param.name).unwrap();
-                println!("  sd {reg}, {offset}(fp)");
+                for (param, reg) in params.iter().zip(ARG_REG) {
+                    let offset = self.locals.get(param.name).unwrap();
+                    println!("  sd {reg}, {offset}(fp)");
+                }
+
+                self.gen_stmt(node);
+
+                // Epilogue
+                println!(".L.return.{name}:");
+                println!("  mv sp, fp");
+                pop("fp");
+                pop("ra");
+
+                println!("  ret");
             }
-
-            self.gen_stmt(function.node);
-
-            // Epilogue
-            println!(".L.return.{}:", function.name);
-            println!("  mv sp, fp");
-            pop("fp");
-            pop("ra");
-
-            println!("  ret");
         }
     }
 
     fn gen_addr(&self, node: TypedNode) {
         match node.kind {
-            TypedNodeKind::Var(Obj { name, .. }) => {
-                println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
+            TypedNodeKind::Var(object) => {
+                println!("  addi a0, fp, {}", self.locals.get(object.name).unwrap());
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);

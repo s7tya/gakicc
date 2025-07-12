@@ -2,9 +2,10 @@ use core::panic;
 use std::{env::args, io::Write};
 
 use codegen::Codegen;
-use ctype::type_functions;
 use lexer::Lexer;
 use parser::Parser;
+
+use crate::ctype::TypedObject;
 
 mod codegen;
 mod ctype;
@@ -31,7 +32,10 @@ fn main() {
     let mut parser = Parser::new(&args[1], tokens);
 
     let functions = parser.parse();
-    let typed_functions = type_functions(functions);
+    let typed_functions = functions
+        .into_iter()
+        .map(TypedObject::from)
+        .collect::<Vec<_>>();
 
     let mut codegen = Codegen::new();
     codegen.codegen(typed_functions);
