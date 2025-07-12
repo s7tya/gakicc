@@ -1,5 +1,5 @@
 use crate::{
-    ctype::{CType, CTypeKind, array_of},
+    ctype::{CType, CTypeKind, array_of, type_node},
     lexer::{Token, TokenKind},
 };
 
@@ -501,6 +501,12 @@ impl<'src> Parser<'src> {
     }
 
     fn unary(&mut self) -> Node<'src> {
+        if self.consume("sizeof") {
+            let node = self.unary();
+            let typed_node = type_node(node);
+            return Node::new(NodeKind::Num(typed_node.ctype.unwrap().size as i32));
+        }
+
         if self.consume("+") {
             return self.unary();
         }

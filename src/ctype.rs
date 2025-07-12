@@ -113,7 +113,7 @@ pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
     )
 }
 
-fn type_node(node: Node) -> TypedNode {
+pub fn type_node(node: Node) -> TypedNode {
     match node.kind {
         NodeKind::Num(value) => TypedNode {
             kind: TypedNodeKind::Num(value),
