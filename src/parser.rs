@@ -299,6 +299,7 @@ impl<'src> Parser<'src> {
         if self.consume("[") {
             let sz = self.expect_number();
             self.expect("]");
+            let ty = self.type_suffix(ty);
             return array_of(ty, sz as usize);
         }
 
