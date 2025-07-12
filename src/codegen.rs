@@ -1,4 +1,7 @@
-use crate::parser::Obj;
+use crate::{
+    ctype::{CType, CTypeKind},
+    parser::Obj,
+};
 use std::collections::HashMap;
 
 use crate::{
@@ -29,7 +32,7 @@ impl<'src> Codegen<'src> {
             let mut offset = 0;
 
             for local in function.locals.iter().rev() {
-                offset += 8;
+                offset += local.ctype.size;
                 self.locals.insert(local.name, -(offset as i32));
             }
             let stack_size = align_to(offset, 16);
@@ -80,17 +83,18 @@ impl<'src> Codegen<'src> {
     }
 
     fn gen_expr(&self, node: TypedNode) {
+        let ctype = node.ctype.clone().unwrap();
         match node.kind {
             TypedNodeKind::Num(value) => {
                 println!("  li a0, {value}");
             }
             TypedNodeKind::Var(_) => {
                 self.gen_addr(node);
-                println!("  ld a0, 0(a0)");
+                load(&ctype);
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
-                println!("  ld a0, 0(a0)");
+                load(&ctype);
             }
             TypedNodeKind::Addr(node) => {
                 self.gen_addr(*node);
@@ -118,13 +122,7 @@ impl<'src> Codegen<'src> {
                 push("a0");
 
                 self.gen_expr(*rhs);
-                push("a0");
-
-                pop("t0");
-                pop("t1");
-
-                println!("  sd t0, 0(t1)");
-                println!("  mv a0, t0");
+                store();
             }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
                 self.gen_expr(*lhs);
@@ -242,4 +240,17 @@ fn pop(reg: &str) {
     println!("  # pop {reg}");
     println!("  ld {reg}, 0(sp)");
     println!("  addi sp, sp, 8");
+}
+
+fn load(ty: &CType) {
+    if let CTypeKind::Array { .. } = ty.kind {
+        return;
+    }
+
+    println!("  ld a0, 0(a0)")
+}
+
+fn store() {
+    pop("a1");
+    println!("  sd a0, 0(a1)");
 }

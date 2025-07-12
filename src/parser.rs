@@ -1,5 +1,5 @@
 use crate::{
-    ctype::{CType, CTypeKind},
+    ctype::{CType, CTypeKind, array_of},
     lexer::{Token, TokenKind},
 };
 
@@ -266,31 +266,40 @@ impl<'src> Parser<'src> {
         CType::new(CTypeKind::Int, None, 8)
     }
 
+    fn func_params(&mut self, ty: CType<'src>) -> CType<'src> {
+        let mut params = vec![];
+        let mut is_head = true;
+        while !self.consume(")") {
+            if !is_head {
+                self.expect(",");
+            }
+            is_head = false;
+
+            let basety = self.declspec();
+            let ty = self.declarator(basety);
+            params.push(ty.clone());
+        }
+
+        CType::new(
+            CTypeKind::Function {
+                return_ty: Box::new(ty),
+                params,
+            },
+            // TODO: ここの name と size がこれでいいかわからない
+            None,
+            0,
+        )
+    }
+
     fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
         if self.consume("(") {
-            let mut cur = vec![];
-            let mut i = 0;
+            return self.func_params(ty);
+        }
 
-            while !self.consume(")") {
-                if i > 0 {
-                    self.expect(",");
-                }
-                i += 1;
-
-                let basety = self.declspec();
-                let ty = self.declarator(basety);
-                cur.push(ty);
-            }
-
-            return CType::new(
-                CTypeKind::Function {
-                    return_ty: Box::new(ty),
-                    params: cur,
-                },
-                // TODO: ここの name と size がこれでいいかわからない
-                None,
-                0,
-            );
+        if self.consume("[") {
+            let sz = self.expect_number();
+            self.expect("]");
+            return array_of(ty, sz as usize);
         }
 
         ty
