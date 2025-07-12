@@ -22,6 +22,7 @@ impl<'src> From<Object<'src>> for TypedObject<'src> {
 pub enum TypedObjectKind<'src> {
     Object {
         ctype: CType<'src>,
+        is_local: bool,
     },
     Function {
         node: TypedNode<'src>,
@@ -33,7 +34,7 @@ pub enum TypedObjectKind<'src> {
 impl<'src> From<ObjectKind<'src>> for TypedObjectKind<'src> {
     fn from(kind: ObjectKind<'src>) -> Self {
         match kind {
-            ObjectKind::Object { ctype } => TypedObjectKind::Object { ctype },
+            ObjectKind::Object { ctype, is_local } => TypedObjectKind::Object { ctype, is_local },
             ObjectKind::Function {
                 node,
                 locals,
@@ -151,7 +152,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
             NodeKind::Var(object) => {
                 if let Object {
                     name,
-                    kind: ObjectKind::Object { ctype },
+                    kind: ObjectKind::Object { ctype, is_local },
                 } = *object
                 {
                     return TypedNode {
@@ -159,6 +160,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             name,
                             kind: TypedObjectKind::Object {
                                 ctype: ctype.clone(),
+                                is_local,
                             },
                         })),
                         ctype: Some(ctype),

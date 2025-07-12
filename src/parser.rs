@@ -13,6 +13,7 @@ pub struct Object<'src> {
 pub enum ObjectKind<'src> {
     Object {
         ctype: CType<'src>,
+        is_local: bool,
     },
     Function {
         node: Node<'src>,
@@ -81,7 +82,7 @@ pub struct Parser<'src> {
     tokens: Vec<Token<'src>>,
     cursor: usize,
     locals: Vec<Object<'src>>,
-    globals: Vec<Object<'src>>,
+    pub globals: Vec<Object<'src>>,
 }
 
 impl<'src> Parser<'src> {
@@ -139,13 +140,18 @@ impl<'src> Parser<'src> {
         );
     }
 
-    fn new_lvar(&mut self, name: &'src str, ctype: CType<'src>) -> Object<'src> {
-        // TODO: ここどっちか参照にできない？
+    fn new_var(&mut self, name: &'src str, ctype: CType<'src>, is_local: bool) -> Object<'src> {
         let obj = Object {
             name,
-            kind: ObjectKind::Object { ctype },
+            kind: ObjectKind::Object { ctype, is_local },
         };
-        self.locals.push(obj.clone());
+
+        // TODO: ここどっちか参照にできない？
+        if is_local {
+            self.locals.push(obj.clone());
+        } else {
+            self.globals.push(obj.clone());
+        }
 
         obj
     }
@@ -154,25 +160,53 @@ impl<'src> Parser<'src> {
         if let CTypeKind::Function { params, .. } = ctype.kind {
             for param in params {
                 let name = self.get_ident(param.name.clone().unwrap());
-                self.new_lvar(name, param);
+                self.new_var(name, param, true);
             }
         }
     }
 
-    pub fn parse(&mut self) -> Vec<Object> {
-        let mut functions = vec![];
-        while !self.at_eof() {
-            let function = self.function();
-            functions.push(function);
-        }
-
-        functions
+    fn find_var(&self, name: &str) -> Option<Object<'src>> {
+        self.locals
+            .iter()
+            .chain(&self.globals)
+            .find(|obj| obj.name == name)
+            .cloned()
     }
 
-    fn function(&mut self) -> Object<'src> {
-        let mut ty = self.declspec();
+    fn is_function(&mut self) -> bool {
+        if self.is_equal(";") {
+            return false;
+        }
 
-        ty = self.declarator(ty);
+        let cursor = self.cursor;
+        let dummy = CType {
+            name: None,
+            size: 0,
+            kind: CTypeKind::Int,
+        };
+        let ty = self.declarator(dummy).kind;
+        self.cursor = cursor;
+
+        matches!(ty, CTypeKind::Function { .. })
+    }
+
+    pub fn parse(&mut self) -> Vec<Object> {
+        while !self.at_eof() {
+            let basety = self.declspec();
+
+            if self.is_function() {
+                let function = self.function(basety);
+                self.globals.push(function);
+            } else {
+                self.global_variable(basety);
+            }
+        }
+
+        self.globals.clone()
+    }
+
+    fn function(&mut self, basety: CType<'src>) -> Object<'src> {
+        let ty = self.declarator(basety);
 
         self.locals = vec![];
 
@@ -188,6 +222,20 @@ impl<'src> Parser<'src> {
                 locals: self.locals.clone(),
                 params,
             },
+        }
+    }
+
+    fn global_variable(&mut self, basety: CType<'src>) {
+        let mut is_first = true;
+
+        while !self.consume(";") {
+            if !is_first {
+                self.expect(",");
+            }
+            is_first = false;
+
+            let ty = self.declarator(basety.clone());
+            self.new_var(ty.name.clone().unwrap().raw_str, ty, false);
         }
     }
 
@@ -352,7 +400,7 @@ impl<'src> Parser<'src> {
 
             let ty = self.declarator(basety.clone());
             let name = self.get_ident(ty.name.clone().unwrap());
-            let obj = self.new_lvar(name, ty);
+            let obj = self.new_var(name, ty, true);
 
             if !self.consume("=") {
                 continue;
@@ -591,13 +639,11 @@ impl<'src> Parser<'src> {
             }
 
             // Variable
-            let Some(var) = self
-                .locals
-                .iter()
-                .find(|local| local.name == token.raw_str)
-                .cloned()
-            else {
-                self.error_at(&format!("undefined variable: {:?}", self.locals));
+            let Some(var) = self.find_var(token.raw_str) else {
+                self.error_at(&format!(
+                    "undefined variable: {:?} {:?} {:?}",
+                    token.raw_str, self.locals, self.globals
+                ));
             };
 
             self.cursor += 1;

@@ -23,7 +23,27 @@ impl<'src> Codegen<'src> {
         }
     }
 
+    fn emit_data(&self, program: &[TypedObject<'src>]) {
+        for function in program {
+            if let TypedObject {
+                name,
+                kind: TypedObjectKind::Object { ctype, .. },
+            } = function
+            {
+                println!("  .global {name}");
+                println!("  .section .data");
+                println!("{name}:");
+                println!("  .zero {}", ctype.size);
+            }
+        }
+    }
+
     pub fn codegen(&mut self, functions: Vec<TypedObject<'src>>) {
+        /*
+            TODO: chibicc の assign_lvar_offsets だと ObjectKind::Function 相当の struct に
+            そのまま stack_size を持たせているが、 Rust で ObjectKind::Function に stack_size を持たせるのが
+            あんまり綺麗じゃない気がしてこの実装になっている。
+        */
         let mut stack_sizes = vec![];
         for function in &functions {
             if let TypedObject {
@@ -35,7 +55,7 @@ impl<'src> Codegen<'src> {
 
                 for local in locals.iter().rev() {
                     if let TypedObject {
-                        kind: TypedObjectKind::Object { ctype },
+                        kind: TypedObjectKind::Object { ctype, .. },
                         ..
                     } = local
                     {
@@ -45,8 +65,12 @@ impl<'src> Codegen<'src> {
                 }
                 let stack_size = align_to(offset, 16);
                 stack_sizes.push(stack_size);
+            } else {
+                stack_sizes.push(0);
             }
         }
+
+        self.emit_data(&functions);
 
         for (function_index, function) in functions.into_iter().enumerate() {
             if let TypedObject {
@@ -56,6 +80,7 @@ impl<'src> Codegen<'src> {
             {
                 self.current_fn_name = Some(name);
 
+                println!("  .section .text");
                 println!("  .global {name}");
                 println!("{name}:");
 
@@ -86,7 +111,17 @@ impl<'src> Codegen<'src> {
     fn gen_addr(&self, node: TypedNode) {
         match node.kind {
             TypedNodeKind::Var(object) => {
-                println!("  addi a0, fp, {}", self.locals.get(object.name).unwrap());
+                if let TypedObject {
+                    name,
+                    kind: TypedObjectKind::Object { is_local, .. },
+                } = *object
+                {
+                    if is_local {
+                        println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
+                    } else {
+                        println!("  la a0, {name}")
+                    }
+                }
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
