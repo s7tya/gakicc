@@ -41,7 +41,9 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            for keyword in ["return", "if", "else", "for", "while", "int", "sizeof"] {
+            for keyword in [
+                "return", "if", "else", "for", "while", "int", "sizeof", "char",
+            ] {
                 if let Some(rest) = self.source[self.cursor..].strip_prefix(keyword) {
                     if rest.is_empty() || !is_ident_follow(rest.chars().next().unwrap()) {
                         tokens.push(Token {

@@ -190,6 +190,10 @@ impl<'src> Parser<'src> {
         matches!(ty, CTypeKind::Function { .. })
     }
 
+    fn is_typename(&mut self) -> bool {
+        self.is_equal("int") || self.is_equal("char")
+    }
+
     pub fn parse(&mut self) -> Vec<Object> {
         while !self.at_eof() {
             let basety = self.declspec();
@@ -320,6 +324,10 @@ impl<'src> Parser<'src> {
     }
 
     fn declspec(&mut self) -> CType<'src> {
+        if self.consume("char") {
+            return CType::new(CTypeKind::Char, None, 1);
+        }
+
         self.expect("int");
 
         CType::new(CTypeKind::Int, None, 8)
@@ -422,7 +430,7 @@ impl<'src> Parser<'src> {
     fn compound_stmt(&mut self) -> Node<'src> {
         let mut nodes = vec![];
         while !self.consume("}") {
-            nodes.push(if self.is_equal("int") {
+            nodes.push(if self.is_typename() {
                 self.declaration()
             } else {
                 self.stmt()

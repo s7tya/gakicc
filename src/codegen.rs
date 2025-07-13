@@ -92,7 +92,21 @@ impl<'src> Codegen<'src> {
 
                 for (param, reg) in params.iter().zip(ARG_REG) {
                     let offset = self.locals.get(param.name).unwrap();
-                    println!("  sd {reg}, {offset}(fp)");
+
+                    if let TypedObject {
+                        kind:
+                            TypedObjectKind::Object {
+                                ctype: CType { size, .. },
+                                ..
+                            },
+                        ..
+                    } = param
+                        && *size == 1
+                    {
+                        println!("  sb {reg}, {offset}(fp)");
+                    } else {
+                        println!("  sd {reg}, {offset}(fp)");
+                    }
                 }
 
                 self.gen_stmt(node);
@@ -172,7 +186,7 @@ impl<'src> Codegen<'src> {
                 push("a0");
 
                 self.gen_expr(*rhs);
-                store();
+                store(&node.ctype.unwrap());
             }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
                 self.gen_expr(*lhs);
@@ -297,10 +311,19 @@ fn load(ty: &CType) {
         return;
     }
 
-    println!("  ld a0, 0(a0)")
+    if ty.size == 1 {
+        println!("  lb a0, 0(a0)");
+    } else {
+        println!("  ld a0, 0(a0)");
+    }
 }
 
-fn store() {
+fn store(ty: &CType) {
     pop("a1");
-    println!("  sd a0, 0(a1)");
+
+    if ty.size == 1 {
+        println!("  sb a0, 0(a1)");
+    } else {
+        println!("  sd a0, 0(a1)");
+    }
 }

@@ -94,6 +94,7 @@ pub enum TypedNodeKind<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CTypeKind<'src> {
     Int,
+    Char,
     Ptr(Box<CType<'src>> /* ポイント先の型 */),
     Function {
         return_ty: Box<CType<'src>>,
@@ -190,213 +191,193 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     }),
                 }
             }
+            NodeKind::BinOp {
+                op: op @ BinOp::Assign,
+                lhs,
+                rhs,
+            } => {
+                let lhs: TypedNode<'_> = (*lhs).into();
+                let rhs: TypedNode<'_> = (*rhs).into();
+
+                if let CTypeKind::Array { .. } = lhs.ctype.clone().unwrap().kind {
+                    panic!("not a lvalue");
+                }
+
+                let lhs_ctype = lhs.ctype.clone();
+
+                TypedNode {
+                    kind: TypedNodeKind::BinOp {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
+                    ctype: lhs_ctype,
+                }
+            }
             NodeKind::BinOp { op, lhs, rhs } => {
                 let lhs: TypedNode<'_> = (*lhs).into();
                 let rhs: TypedNode<'_> = (*rhs).into();
 
                 match (&op, lhs.ctype.clone(), rhs.ctype.clone()) {
-                (BinOp::Assign, lhs_ctype, _) => {
-                    if let CTypeKind::Array { .. }  = lhs_ctype.clone().unwrap().kind {
-                        panic!("not a lvalue");
-                    }
-
-                    TypedNode {
-                    kind: TypedNodeKind::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
+                    // (int | char) _ (int | char) -> int
+                    (
+                        _,
+                        Some(CType {
+                            kind: CTypeKind::Int | CTypeKind::Char,
+                            ..
+                        }),
+                        Some(CType {
+                            kind: CTypeKind::Int | CTypeKind::Char,
+                            ..
+                        }),
+                    ) => TypedNode {
+                        kind: TypedNodeKind::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        ctype: Some(CType {
+                            kind: CTypeKind::Int,
+                            name: None,
+                            size: 8,
+                        }),
                     },
-                    ctype: lhs_ctype.clone(),
-                }},
-                // int _ int -> int
-                (
-                    _,
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        ..
-                    }),
-                ) => TypedNode {
-                    kind: TypedNodeKind::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    },
-                    ctype: Some(CType {
-                        kind: CTypeKind::Int,
-                        name: None,
-                        size: 8
-                    }),
-                },
-                // int + ptr -> ptr
-                (
-                    BinOp::Add,
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        name: None,
-                        size: 8
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Ptr(ctype) | CTypeKind::Array { base: ctype, .. },
-                        ..
-                    }),
-                ) => {
-                    let lhs = TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op: BinOp::Mul,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new((Node {
-                                kind: NodeKind::Num(ctype.size as i32),
-                            }).into()),
-                        },
-                        ctype: Some(CType {
-                            kind: CTypeKind::Int,
+                    // (int | char) + ptr -> ptr
+                    (
+                        BinOp::Add,
+                        Some(CType {
+                            kind: CTypeKind::Int | CTypeKind::Char,
                             name: None,
-                            size: 8
+                            size: 8,
                         }),
-                    };
+                        Some(CType {
+                            kind: CTypeKind::Ptr(ctype) | CTypeKind::Array { base: ctype, .. },
+                            ..
+                        }),
+                    ) => {
+                        let lhs = TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op: BinOp::Mul,
+                                lhs: Box::new(lhs),
+                                rhs: Box::new(
+                                    (Node {
+                                        kind: NodeKind::Num(ctype.size as i32),
+                                    })
+                                    .into(),
+                                ),
+                            },
+                            ctype: Some(CType {
+                                kind: CTypeKind::Int,
+                                name: None,
+                                size: 8,
+                            }),
+                        };
 
-                    TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        ctype: Some(CType::pointer_to(*ctype.clone())),
+                        TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op,
+                                lhs: Box::new(lhs),
+                                rhs: Box::new(rhs),
+                            },
+                            ctype: Some(CType::pointer_to(*ctype.clone())),
+                        }
+                    }
+                    // ptr + (int | char), ptr - (int | char)
+                    (
+                        BinOp::Add | BinOp::Sub,
+                        Some(CType {
+                            kind: CTypeKind::Ptr(ctype) | CTypeKind::Array { base: ctype, .. },
+                            ..
+                        }),
+                        Some(CType {
+                            kind: CTypeKind::Int | CTypeKind::Char,
+                            name: None,
+                            size: 8,
+                        }),
+                    ) => {
+                        let rhs = TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op: BinOp::Mul,
+                                lhs: Box::new(rhs),
+                                rhs: Box::new(
+                                    (Node {
+                                        kind: NodeKind::Num(ctype.size as i32),
+                                    })
+                                    .into(),
+                                ),
+                            },
+                            ctype: Some(CType {
+                                kind: CTypeKind::Int,
+                                name: None,
+                                // TODO: リテラルから変える？
+                                size: 8,
+                            }),
+                        };
+
+                        TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op,
+                                lhs: Box::new(lhs),
+                                rhs: Box::new(rhs),
+                            },
+                            ctype: Some(CType::pointer_to(*ctype.clone())),
+                        }
+                    }
+                    // ptr - ptr
+                    (
+                        BinOp::Sub,
+                        Some(CType {
+                            kind:
+                                CTypeKind::Ptr(lhs_basety)
+                                | CTypeKind::Array {
+                                    base: lhs_basety, ..
+                                },
+                            ..
+                        }),
+                        Some(CType {
+                            kind: CTypeKind::Ptr(_) | CTypeKind::Array { .. },
+                            ..
+                        }),
+                    ) => {
+                        let typed_node = TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op,
+                                lhs: Box::new(lhs),
+                                rhs: Box::new(rhs),
+                            },
+                            ctype: Some(CType {
+                                kind: CTypeKind::Int,
+                                name: None,
+                                // TODO: リテラルから変える？
+                                size: 8,
+                            }),
+                        };
+
+                        TypedNode {
+                            kind: TypedNodeKind::BinOp {
+                                op: BinOp::Div,
+                                lhs: Box::new(typed_node),
+                                rhs: Box::new(
+                                    (Node {
+                                        kind: NodeKind::Num(lhs_basety.size as i32),
+                                    })
+                                    .into(),
+                                ),
+                            },
+                            ctype: Some(CType {
+                                kind: CTypeKind::Int,
+                                name: None,
+                                size: 8,
+                            }),
+                        }
+                    }
+
+                    // else
+                    // TODO: これ本当は wildcard にしない方がいい気がする
+                    (_, _, _) => {
+                        panic!("{lhs:?}\n{op:?}\n{rhs:?} is not defined")
                     }
                 }
-                // ptr + int, ptr - int
-                (
-                    BinOp::Add | BinOp::Sub,
-                    Some(CType {
-                        kind: CTypeKind::Ptr(ctype) | CTypeKind::Array{ base: ctype, ..},
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        name: None,
-                        size: 8
-                    }),
-                ) => {
-                    let rhs = TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op: BinOp::Mul,
-                            lhs: Box::new(rhs),
-                            rhs: Box::new((Node {
-                                kind: NodeKind::Num(ctype.size as i32),
-                            }).into()),
-                        },
-                        ctype: Some(CType {
-                            kind: CTypeKind::Int,
-                            name: None,
-                            // TODO: リテラルから変える？
-                            size: 8
-                        }),
-                    };
-
-                    TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        ctype: Some(CType::pointer_to(*ctype.clone())),
-                    }
-                }
-                // ptr - ptr
-                (
-                    BinOp::Sub,
-                    Some(CType {
-                        kind: CTypeKind::Ptr(lhs_basety) | CTypeKind::Array { base: lhs_basety, .. },
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Ptr(_) | CTypeKind::Array { .. },
-                        ..
-                    }),
-                ) => {
-                    let typed_node = TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        ctype: Some(CType {
-                            kind: CTypeKind::Int,
-                            name: None,
-                            // TODO: リテラルから変える？
-                            size: 8
-                        }),
-                    };
-
-                    TypedNode {
-                        kind: TypedNodeKind::BinOp {
-                            op: BinOp::Div,
-                            lhs: Box::new(typed_node),
-                            rhs: Box::new((Node {
-                                kind: NodeKind::Num(lhs_basety.size as i32),
-                            }).into()),
-                        },
-                        ctype: Some(CType {
-                            kind: CTypeKind::Int,
-                            name: None,
-                            size: 8
-                        }),
-                    }
-                }
-
-                // else
-                (
-                    _,
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Ptr(_),
-                        ..
-                    }),
-                )
-                | (
-                    _,
-                    None,
-                    _,
-                )
-                | (
-                    _,
-                    _,
-                    None,
-                )
-                | (
-                    _,
-                    Some(CType {
-                        kind: CTypeKind::Ptr(_),
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Int,
-                        ..
-                    }),
-                )
-                | (
-                    _,
-                    Some(CType {
-                        kind: CTypeKind::Ptr(_),
-                        ..
-                    }),
-                    Some(CType {
-                        kind: CTypeKind::Ptr(_),
-                        ..
-                    }),
-                )
-                // TODO: これ wildcard にしない方がいい気がする
-                | (_, _, _) => {
-                    panic!("{lhs:?}\n{op:?}\n{rhs:?}")
-                }
-            }
             }
             NodeKind::FuncCall { name, args } => TypedNode {
                 kind: TypedNodeKind::FuncCall {
