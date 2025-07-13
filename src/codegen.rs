@@ -1,8 +1,8 @@
-use crate::ctype::{CType, CTypeKind, TypedObjectKind};
+use crate::ctype::{CType, CTypeKind, TypedObject};
 use std::collections::HashMap;
 
 use crate::{
-    ctype::{TypedNode, TypedNodeKind, TypedObject},
+    ctype::{TypedNode, TypedNodeKind},
     parser::BinOp,
 };
 
@@ -25,15 +25,20 @@ impl<'src> Codegen<'src> {
 
     fn emit_data(&self, program: &[TypedObject<'src>]) {
         for function in program {
-            if let TypedObject {
-                name,
-                kind: TypedObjectKind::Object { ctype, .. },
-            } = function
-            {
+            if let TypedObject::Object { name, ctype, .. } = function {
                 println!("  .global {name}");
                 println!("  .section .data");
                 println!("{name}:");
+
                 println!("  .zero {}", ctype.size);
+            }
+
+            if let TypedObject::StringLiteral { id, string, .. } = function {
+                let name = format!(".L..{id}");
+                println!("  .global {name}");
+                println!("  .section .data");
+                println!("{name}:");
+                println!("  .string \"{string}\"");
             }
         }
     }
@@ -46,21 +51,13 @@ impl<'src> Codegen<'src> {
         */
         let mut stack_sizes = vec![];
         for function in &functions {
-            if let TypedObject {
-                kind: TypedObjectKind::Function { locals, .. },
-                ..
-            } = function
-            {
+            if let TypedObject::Function { locals, .. } = function {
                 let mut offset = 0;
 
                 for local in locals.iter().rev() {
-                    if let TypedObject {
-                        kind: TypedObjectKind::Object { ctype, .. },
-                        ..
-                    } = local
-                    {
+                    if let TypedObject::Object { name, ctype, .. } = local {
                         offset += ctype.size;
-                        self.locals.insert(local.name, -(offset as i32));
+                        self.locals.insert(name, -(offset as i32));
                     }
                 }
                 let stack_size = align_to(offset, 16);
@@ -73,9 +70,8 @@ impl<'src> Codegen<'src> {
         self.emit_data(&functions);
 
         for (function_index, function) in functions.into_iter().enumerate() {
-            if let TypedObject {
-                name,
-                kind: TypedObjectKind::Function { node, params, .. },
+            if let TypedObject::Function {
+                name, node, params, ..
             } = function
             {
                 self.current_fn_name = Some(name);
@@ -91,14 +87,10 @@ impl<'src> Codegen<'src> {
                 println!("  addi sp, sp, -{}", stack_sizes[function_index]);
 
                 for (param, reg) in params.iter().zip(ARG_REG) {
-                    let offset = self.locals.get(param.name).unwrap();
+                    let offset = self.locals.get(param.name().unwrap()).unwrap();
 
-                    if let TypedObject {
-                        kind:
-                            TypedObjectKind::Object {
-                                ctype: CType { size, .. },
-                                ..
-                            },
+                    if let TypedObject::Object {
+                        ctype: CType { size, .. },
                         ..
                     } = param
                         && *size == 1
@@ -124,19 +116,21 @@ impl<'src> Codegen<'src> {
 
     fn gen_addr(&self, node: TypedNode) {
         match node.kind {
-            TypedNodeKind::Var(object) => {
-                if let TypedObject {
-                    name,
-                    kind: TypedObjectKind::Object { is_local, .. },
-                } = *object
-                {
+            TypedNodeKind::Var(object) => match *object {
+                TypedObject::Object { name, is_local, .. } => {
                     if is_local {
                         println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
                     } else {
                         println!("  la a0, {name}")
                     }
                 }
-            }
+                TypedObject::StringLiteral { id, .. } => {
+                    println!("  la a0, .L..{id}")
+                }
+                _ => panic!(
+                    "object.kind is not TypedObjectKind::Object or TypedObjectKind::StringLiteral"
+                ),
+            },
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
             }

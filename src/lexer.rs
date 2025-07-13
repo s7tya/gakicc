@@ -1,14 +1,15 @@
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TokenKind {
+pub enum TokenKind<'src> {
     Reserved,
     Ident,
     Num(i32),
+    String(&'src str),
     Eof,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token<'src> {
-    pub kind: TokenKind,
+    pub kind: TokenKind<'src>,
     pub raw_str: &'src str,
 }
 
@@ -70,24 +71,6 @@ impl<'src> Lexer<'src> {
                 }
             }
 
-            if is_ident_first(c) {
-                let start = self.cursor;
-                self.cursor += 1;
-
-                while let Some(ch) = self.source[self.cursor..].chars().next() {
-                    if !is_ident_follow(ch) {
-                        break;
-                    }
-                    self.cursor += 1;
-                }
-
-                tokens.push(Token {
-                    kind: TokenKind::Ident,
-                    raw_str: &self.source[start..self.cursor],
-                });
-                continue;
-            }
-
             if c.is_ascii_digit() {
                 let start = self.cursor;
                 while self.cursor < self.source.len()
@@ -106,6 +89,42 @@ impl<'src> Lexer<'src> {
                             .parse::<i32>()
                             .expect("数字へのパースに失敗"),
                     ),
+                    raw_str: &self.source[start..self.cursor],
+                });
+                continue;
+            }
+
+            if c == '"' {
+                let start = self.cursor;
+                self.cursor += 1;
+
+                while !self.source[self.cursor..].starts_with('\"') {
+                    self.cursor += 1;
+                }
+
+                tokens.push(Token {
+                    kind: TokenKind::String(&self.source[(start + 1)..self.cursor]),
+                    raw_str: &self.source[start..(self.cursor + 1)],
+                });
+
+                self.cursor += 1;
+
+                continue;
+            }
+
+            if is_ident_first(c) {
+                let start = self.cursor;
+                self.cursor += 1;
+
+                while let Some(ch) = self.source[self.cursor..].chars().next() {
+                    if !is_ident_follow(ch) {
+                        break;
+                    }
+                    self.cursor += 1;
+                }
+
+                tokens.push(Token {
+                    kind: TokenKind::Ident,
                     raw_str: &self.source[start..self.cursor],
                 });
                 continue;

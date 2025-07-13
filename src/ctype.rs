@@ -1,45 +1,60 @@
 use crate::{
     lexer::Token,
-    parser::{BinOp, Node, NodeKind, Object, ObjectKind},
+    parser::{BinOp, Node, NodeKind, Object},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct TypedObject<'src> {
-    pub name: &'src str,
-    pub kind: TypedObjectKind<'src>,
-}
-
-impl<'src> From<Object<'src>> for TypedObject<'src> {
-    fn from(object: Object<'src>) -> TypedObject<'src> {
-        TypedObject {
-            name: object.name,
-            kind: object.kind.into(),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum TypedObjectKind<'src> {
+pub enum TypedObject<'src> {
     Object {
+        name: &'src str,
         ctype: CType<'src>,
         is_local: bool,
     },
+    StringLiteral {
+        id: usize,
+        ctype: CType<'src>,
+        string: &'src str,
+    },
     Function {
+        name: &'src str,
         node: TypedNode<'src>,
         locals: Vec<TypedObject<'src>>,
         params: Vec<TypedObject<'src>>,
     },
 }
 
-impl<'src> From<ObjectKind<'src>> for TypedObjectKind<'src> {
-    fn from(kind: ObjectKind<'src>) -> Self {
+impl<'src> TypedObject<'src> {
+    pub fn name(&self) -> Option<&'src str> {
+        if let TypedObject::Function { name, .. } | TypedObject::Object { name, .. } = self {
+            return Some(name);
+        }
+
+        None
+    }
+}
+
+impl<'src> From<Object<'src>> for TypedObject<'src> {
+    fn from(kind: Object<'src>) -> Self {
         match kind {
-            ObjectKind::Object { ctype, is_local } => TypedObjectKind::Object { ctype, is_local },
-            ObjectKind::Function {
+            Object::Object {
+                name,
+                ctype,
+                is_local,
+            } => TypedObject::Object {
+                name,
+                ctype,
+                is_local,
+            },
+            Object::StringLiteral { id, ctype, string } => {
+                TypedObject::StringLiteral { id, ctype, string }
+            }
+            Object::Function {
+                name,
                 node,
                 locals,
                 params,
-            } => TypedObjectKind::Function {
+            } => TypedObject::Function {
+                name,
                 node: (node).into(),
                 locals: locals
                     .into_iter()
@@ -150,26 +165,31 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     size: 8,
                 }),
             },
-            NodeKind::Var(object) => {
-                if let Object {
+            NodeKind::Var(object) => match *object {
+                Object::Object {
                     name,
-                    kind: ObjectKind::Object { ctype, is_local },
-                } = *object
-                {
-                    return TypedNode {
-                        kind: TypedNodeKind::Var(Box::new(TypedObject {
-                            name,
-                            kind: TypedObjectKind::Object {
-                                ctype: ctype.clone(),
-                                is_local,
-                            },
-                        })),
-                        ctype: Some(ctype),
-                    };
+                    ctype,
+                    is_local,
+                } => TypedNode {
+                    kind: TypedNodeKind::Var(Box::new(TypedObject::Object {
+                        name,
+                        ctype: ctype.clone(),
+                        is_local,
+                    })),
+                    ctype: Some(ctype),
+                },
+                Object::StringLiteral { id, ctype, string } => TypedNode {
+                    kind: TypedNodeKind::Var(Box::new(TypedObject::StringLiteral {
+                        id,
+                        ctype: ctype.clone(),
+                        string,
+                    })),
+                    ctype: Some(ctype),
+                },
+                _ => {
+                    panic!("{object:?} is not ObjectKind::Object or ObjectKind::StringLiteral")
                 }
-
-                panic!("{object:?} is not ObjectKind::Object")
-            }
+            },
             NodeKind::BinOp {
                 op: op @ (BinOp::Eq | BinOp::Ne | BinOp::Le | BinOp::Lt),
                 lhs,

@@ -4,22 +4,33 @@ use crate::{
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Object<'src> {
-    pub name: &'src str,
-    pub kind: ObjectKind<'src>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum ObjectKind<'src> {
+pub enum Object<'src> {
     Object {
+        name: &'src str,
         ctype: CType<'src>,
         is_local: bool,
     },
+    StringLiteral {
+        id: usize,
+        ctype: CType<'src>,
+        string: &'src str,
+    },
     Function {
+        name: &'src str,
         node: Node<'src>,
         locals: Vec<Object<'src>>,
         params: Vec<Object<'src>>,
     },
+}
+
+impl<'src> Object<'src> {
+    pub fn name(&self) -> Option<&'src str> {
+        if let Object::Function { name, .. } | Object::Object { name, .. } = self {
+            return Some(name);
+        }
+
+        None
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -83,6 +94,7 @@ pub struct Parser<'src> {
     cursor: usize,
     locals: Vec<Object<'src>>,
     pub globals: Vec<Object<'src>>,
+    anon_gvar_count: usize,
 }
 
 impl<'src> Parser<'src> {
@@ -93,6 +105,7 @@ impl<'src> Parser<'src> {
             cursor: 0,
             locals: vec![],
             globals: vec![],
+            anon_gvar_count: 0,
         }
     }
 
@@ -141,9 +154,10 @@ impl<'src> Parser<'src> {
     }
 
     fn new_var(&mut self, name: &'src str, ctype: CType<'src>, is_local: bool) -> Object<'src> {
-        let obj = Object {
+        let obj = Object::Object {
             name,
-            kind: ObjectKind::Object { ctype, is_local },
+            ctype,
+            is_local,
         };
 
         // TODO: ここどっちか参照にできない？
@@ -152,6 +166,25 @@ impl<'src> Parser<'src> {
         } else {
             self.globals.push(obj.clone());
         }
+
+        obj
+    }
+
+    fn new_string_literal(&mut self, string: &'src str) -> Object<'src> {
+        let obj = Object::StringLiteral {
+            id: self.anon_gvar_count,
+            ctype: array_of(
+                CType {
+                    kind: CTypeKind::Char,
+                    size: 1,
+                    name: None,
+                },
+                string.len() + 1,
+            ),
+            string,
+        };
+        self.anon_gvar_count += 1;
+        self.globals.push(obj.clone());
 
         obj
     }
@@ -169,7 +202,7 @@ impl<'src> Parser<'src> {
         self.locals
             .iter()
             .chain(&self.globals)
-            .find(|obj| obj.name == name)
+            .find(|obj| obj.name() == Some(name))
             .cloned()
     }
 
@@ -219,13 +252,11 @@ impl<'src> Parser<'src> {
         let params = self.locals.clone();
         self.expect("{");
 
-        Object {
+        Object::Function {
             name,
-            kind: ObjectKind::Function {
-                node: self.compound_stmt(),
-                locals: self.locals.clone(),
-                params,
-            },
+            node: self.compound_stmt(),
+            locals: self.locals.clone(),
+            params,
         }
     }
 
@@ -657,6 +688,11 @@ impl<'src> Parser<'src> {
             self.cursor += 1;
 
             return Node::new(NodeKind::Var(Box::new(var)));
+        }
+
+        if let TokenKind::String(s) = token.kind {
+            self.cursor += 1;
+            return Node::new(NodeKind::Var(Box::new(self.new_string_literal(s))));
         }
 
         if matches!(token.kind, TokenKind::Num(..)) {
