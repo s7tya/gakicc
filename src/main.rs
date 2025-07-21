@@ -5,7 +5,7 @@ use codegen::Codegen;
 use lexer::Lexer;
 use parser::Parser;
 
-use crate::ctype::TypedObject;
+use crate::{ctype::TypedObject, lexer::Span};
 
 mod codegen;
 mod ctype;
@@ -21,15 +21,33 @@ pub fn log(str: &str) {
     f.write_all(format!("{str}\n").as_bytes()).unwrap();
 }
 
+pub struct SourceMap<'src> {
+    pub source: &'src str,
+}
+
+impl<'src> SourceMap<'src> {
+    pub fn new(source: &'src str) -> Self {
+        Self { source }
+    }
+
+    pub fn span_to_str(&self, span: &Span) -> &'src str {
+        // TODO: ここで範囲外の場合をハンドル
+        &self.source[span.lo..span.hi]
+    }
+}
+
 fn main() {
     let args = args().collect::<Vec<_>>();
     if args.len() != 2 {
         panic!("引数の個数が正しくありません");
     }
 
-    let mut lexer = Lexer::new(&args[1]);
+    let source = args[1].as_str();
+    let mut lexer = Lexer::new(source);
     let tokens = lexer.lex();
-    let mut parser = Parser::new(&args[1], tokens);
+
+    let source_map = SourceMap::new(source);
+    let mut parser = Parser::new(&source_map, tokens);
 
     let functions = parser.parse();
     let typed_functions = functions
