@@ -8,10 +8,18 @@ pub enum TokenKind<'src> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Span {
+    pub lo: usize,
+    pub hi: usize,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Token<'src> {
     pub kind: TokenKind<'src>,
-    pub raw_str: &'src str,
+    pub span: Span,
 }
+
+impl<'src> Token<'src> {}
 
 pub struct Lexer<'src> {
     source: &'src str,
@@ -49,7 +57,10 @@ impl<'src> Lexer<'src> {
                     if rest.is_empty() || !is_ident_follow(rest.chars().next().unwrap()) {
                         tokens.push(Token {
                             kind: TokenKind::Reserved,
-                            raw_str: &self.source[self.cursor..self.cursor + keyword.len()],
+                            span: Span {
+                                lo: self.cursor,
+                                hi: self.cursor + keyword.len(),
+                            },
                         });
                         self.cursor += keyword.len();
                         continue 'outer;
@@ -64,7 +75,10 @@ impl<'src> Lexer<'src> {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {
                         kind: TokenKind::Reserved,
-                        raw_str: &self.source[self.cursor..self.cursor + punct.len()],
+                        span: Span {
+                            lo: self.cursor,
+                            hi: self.cursor + punct.len(),
+                        },
                     });
                     self.cursor += punct.len();
                     continue 'outer;
@@ -89,7 +103,10 @@ impl<'src> Lexer<'src> {
                             .parse::<i32>()
                             .expect("数字へのパースに失敗"),
                     ),
-                    raw_str: &self.source[start..self.cursor],
+                    span: Span {
+                        lo: start,
+                        hi: self.cursor,
+                    },
                 });
                 continue;
             }
@@ -104,7 +121,10 @@ impl<'src> Lexer<'src> {
 
                 tokens.push(Token {
                     kind: TokenKind::String(&self.source[(start + 1)..self.cursor]),
-                    raw_str: &self.source[start..(self.cursor + 1)],
+                    span: Span {
+                        lo: start,
+                        hi: (self.cursor + 1),
+                    },
                 });
 
                 self.cursor += 1;
@@ -125,7 +145,10 @@ impl<'src> Lexer<'src> {
 
                 tokens.push(Token {
                     kind: TokenKind::Ident,
-                    raw_str: &self.source[start..self.cursor],
+                    span: Span {
+                        lo: start,
+                        hi: self.cursor,
+                    },
                 });
                 continue;
             }
@@ -135,7 +158,10 @@ impl<'src> Lexer<'src> {
 
         tokens.push(Token {
             kind: TokenKind::Eof,
-            raw_str: "",
+            span: Span {
+                lo: self.source.len(),
+                hi: self.source.len(),
+            },
         });
 
         tokens

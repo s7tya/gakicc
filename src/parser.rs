@@ -1,4 +1,5 @@
 use crate::{
+    SourceMap,
     ctype::{CType, CTypeKind, TypedNode, array_of},
     lexer::{Token, TokenKind},
 };
@@ -89,7 +90,7 @@ impl<'src> Node<'src> {
 }
 
 pub struct Parser<'src> {
-    source: &'src str,
+    source_map: &'src SourceMap<'src>,
     tokens: Vec<Token<'src>>,
     cursor: usize,
     locals: Vec<Object<'src>>,
@@ -98,9 +99,9 @@ pub struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    pub fn new(source: &'src str, tokens: Vec<Token<'src>>) -> Self {
+    pub fn new(source_map: &'src SourceMap<'src>, tokens: Vec<Token<'src>>) -> Self {
         Self {
-            source,
+            source_map,
             tokens,
             cursor: 0,
             locals: vec![],
@@ -119,7 +120,7 @@ impl<'src> Parser<'src> {
 
     pub fn is_equal(&self, op: &str) -> bool {
         let token = &self.tokens[self.cursor];
-        token.raw_str == op
+        self.source_map.span_to_str(&token.span) == op
     }
 
     pub fn expect(&mut self, op: &str) {
@@ -145,11 +146,10 @@ impl<'src> Parser<'src> {
     pub fn error_at(&self, message: &str) -> ! {
         panic!(
             "{}\n{:>width$}\n{}",
-            self.source,
+            self.source_map.source,
             "^",
             message,
-            // TODO: この表示が正しくない。white spaceをスキップしている分と、文字数とトークン数の誤解
-            width = self.cursor
+            width = self.tokens[self.cursor].span.lo,
         );
     }
 
@@ -270,7 +270,11 @@ impl<'src> Parser<'src> {
             is_first = false;
 
             let ty = self.declarator(basety.clone());
-            self.new_var(ty.name.clone().unwrap().raw_str, ty, false);
+            self.new_var(
+                self.source_map.span_to_str(&ty.name.clone().unwrap().span),
+                ty,
+                false,
+            );
         }
     }
 
@@ -351,7 +355,7 @@ impl<'src> Parser<'src> {
             self.error_at(&format!("expected identifier, got {token:?}"));
         }
 
-        token.raw_str
+        self.source_map.span_to_str(&token.span)
     }
 
     fn declspec(&mut self) -> CType<'src> {
@@ -645,7 +649,7 @@ impl<'src> Parser<'src> {
     }
 
     fn funcall(&mut self) -> Node<'src> {
-        let name = self.tokens[self.cursor].raw_str;
+        let name = self.source_map.span_to_str(&self.tokens[self.cursor].span);
         // ident と "(" を消費
         self.cursor += 2;
 
@@ -673,15 +677,20 @@ impl<'src> Parser<'src> {
         let token = &self.tokens[self.cursor];
         if token.kind == TokenKind::Ident {
             // FuncCall
-            if self.tokens[self.cursor + 1].raw_str == "(" {
+            if self
+                .source_map
+                .span_to_str(&self.tokens[self.cursor + 1].span)
+                == "("
+            {
                 return self.funcall();
             }
 
             // Variable
-            let Some(var) = self.find_var(token.raw_str) else {
+            let raw_str = self.source_map.span_to_str(&token.span);
+            let Some(var) = self.find_var(raw_str) else {
                 self.error_at(&format!(
                     "undefined variable: {:?} {:?} {:?}",
-                    token.raw_str, self.locals, self.globals
+                    raw_str, self.locals, self.globals
                 ));
             };
 
