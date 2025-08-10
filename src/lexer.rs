@@ -45,6 +45,26 @@ impl<'src> Lexer<'src> {
         'outer: while self.cursor < self.source.len() {
             let c = self.source[self.cursor..].chars().next().unwrap();
 
+            if self.source[self.cursor..].starts_with("//") {
+                self.cursor += 2;
+                while !self.source[self.cursor..].starts_with('\n') {
+                    self.cursor += 1;
+                }
+
+                continue;
+            }
+
+            if self.source[self.cursor..].starts_with("/*") {
+                self.cursor += 2;
+                if let Some(offset) = self.source[self.cursor..].find("*/") {
+                    self.cursor += offset + 2;
+                } else {
+                    panic!("unclosed block comment");
+                }
+
+                continue;
+            }
+
             if c.is_whitespace() {
                 self.cursor += 1;
                 continue;
