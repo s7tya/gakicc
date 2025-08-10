@@ -1,6 +1,10 @@
 #!/bin/bash
 
-cat <<EOF | riscv64-elf-gcc -xc -c -o tmp2.o -
+shopt -s expand_aliases
+alias gakicc="RUSTFLAGS=-Awarnings cargo run -q --"
+alias gcc="riscv64-linux-gnu-gcc"
+
+cat <<EOF | gcc -xc -c -o tmp2.o -
 int ret3() { return 3; }
 int ret5() { return 5; }
 int add(int x, int y) { return x+y; }
@@ -19,8 +23,8 @@ assert() {
   expected="$1"
   input="$2"
 
-  echo "$input" | RUSTFLAGS=-Awarnings cargo run -q -- - > tmp.s
-  riscv64-elf-gcc -static -o tmp tmp2.o tmp.s 
+  echo "$input" | gakicc -o tmp.s - || exit
+  gcc -static -o tmp tmp2.o tmp.s 
   qemu-riscv64 ./tmp
   actual="$?"
 

@@ -1,5 +1,5 @@
 use crate::ctype::{CType, CTypeKind, TypedObject};
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Write};
 
 use crate::{
     ctype::{TypedNode, TypedNodeKind},
@@ -10,35 +10,37 @@ pub struct Codegen<'src> {
     locals: HashMap<&'src str, i32>,
     count: usize,
     current_fn_name: Option<&'src str>,
+    writer: Box<dyn Write>,
 }
 
 const ARG_REG: &[&str] = &["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7"];
 
 impl<'src> Codegen<'src> {
-    pub fn new() -> Self {
+    pub fn new(writer: Box<dyn Write>) -> Self {
         Self {
             locals: HashMap::new(),
             count: 0,
             current_fn_name: None,
+            writer,
         }
     }
 
-    fn emit_data(&self, program: &[TypedObject<'src>]) {
+    fn emit_data(&mut self, program: &[TypedObject<'src>]) {
         for function in program {
             if let TypedObject::Object { name, ctype, .. } = function {
-                println!("  .global {name}");
-                println!("  .section .data");
-                println!("{name}:");
+                writeln!(&mut self.writer, "  .global {name}").unwrap();
+                writeln!(&mut self.writer, "  .section .data").unwrap();
+                writeln!(&mut self.writer, "{name}:").unwrap();
 
-                println!("  .zero {}", ctype.size);
+                writeln!(&mut self.writer, "  .zero {}", ctype.size).unwrap();
             }
 
             if let TypedObject::StringLiteral { id, string, .. } = function {
                 let name = format!(".L..{id}");
-                println!("  .global {name}");
-                println!("  .section .data");
-                println!("{name}:");
-                println!("  .string \"{string}\"");
+                writeln!(&mut self.writer, "  .global {name}").unwrap();
+                writeln!(&mut self.writer, "  .section .data").unwrap();
+                writeln!(&mut self.writer, "{name}:").unwrap();
+                writeln!(&mut self.writer, "  .string \"{string}\"").unwrap();
             }
         }
     }
@@ -76,15 +78,20 @@ impl<'src> Codegen<'src> {
             {
                 self.current_fn_name = Some(name);
 
-                println!("  .section .text");
-                println!("  .global {name}");
-                println!("{name}:");
+                writeln!(&mut self.writer, "  .section .text").unwrap();
+                writeln!(&mut self.writer, "  .global {name}").unwrap();
+                writeln!(&mut self.writer, "{name}:").unwrap();
 
                 // Prologue
-                push("ra");
-                push("fp");
-                println!("  mv fp, sp");
-                println!("  addi sp, sp, -{}", stack_sizes[function_index]);
+                push(&mut self.writer, "ra");
+                push(&mut self.writer, "fp");
+                writeln!(&mut self.writer, "  mv fp, sp").unwrap();
+                writeln!(
+                    &mut self.writer,
+                    "  addi sp, sp, -{}",
+                    stack_sizes[function_index]
+                )
+                .unwrap();
 
                 for (param, reg) in params.iter().zip(ARG_REG) {
                     let offset = self.locals.get(param.name().unwrap()).unwrap();
@@ -95,37 +102,42 @@ impl<'src> Codegen<'src> {
                     } = param
                         && *size == 1
                     {
-                        println!("  sb {reg}, {offset}(fp)");
+                        writeln!(&mut self.writer, "  sb {reg}, {offset}(fp)").unwrap();
                     } else {
-                        println!("  sd {reg}, {offset}(fp)");
+                        writeln!(&mut self.writer, "  sd {reg}, {offset}(fp)").unwrap();
                     }
                 }
 
                 self.gen_stmt(node);
 
                 // Epilogue
-                println!(".L.return.{name}:");
-                println!("  mv sp, fp");
-                pop("fp");
-                pop("ra");
+                writeln!(&mut self.writer, ".L.return.{name}:").unwrap();
+                writeln!(&mut self.writer, "  mv sp, fp").unwrap();
+                pop(&mut self.writer, "fp");
+                pop(&mut self.writer, "ra");
 
-                println!("  ret");
+                writeln!(&mut self.writer, "  ret").unwrap();
             }
         }
     }
 
-    fn gen_addr(&self, node: TypedNode) {
+    fn gen_addr(&mut self, node: TypedNode) {
         match node.kind {
             TypedNodeKind::Var(object) => match *object {
                 TypedObject::Object { name, is_local, .. } => {
                     if is_local {
-                        println!("  addi a0, fp, {}", self.locals.get(name).unwrap());
+                        writeln!(
+                            &mut self.writer,
+                            "  addi a0, fp, {}",
+                            self.locals.get(name).unwrap()
+                        )
+                        .unwrap();
                     } else {
-                        println!("  la a0, {name}")
+                        writeln!(&mut self.writer, "  la a0, {name}").unwrap();
                     }
                 }
                 TypedObject::StringLiteral { id, .. } => {
-                    println!("  la a0, .L..{id}")
+                    writeln!(&mut self.writer, "  la a0, .L..{id}");
                 }
                 _ => panic!(
                     "object.kind is not TypedObjectKind::Object or TypedObjectKind::StringLiteral"
@@ -140,19 +152,19 @@ impl<'src> Codegen<'src> {
         }
     }
 
-    fn gen_expr(&self, node: TypedNode) {
+    fn gen_expr(&mut self, node: TypedNode) {
         let ctype = node.ctype.clone().unwrap();
         match node.kind {
             TypedNodeKind::Num(value) => {
-                println!("  li a0, {value}");
+                writeln!(&mut self.writer, "  li a0, {value}").unwrap();
             }
             TypedNodeKind::Var(_) => {
                 self.gen_addr(node);
-                load(&ctype);
+                load(&mut self.writer, &ctype);
             }
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
-                load(&ctype);
+                load(&mut self.writer, &ctype);
             }
             TypedNodeKind::Addr(node) => {
                 self.gen_addr(*node);
@@ -161,15 +173,15 @@ impl<'src> Codegen<'src> {
                 let mut nargs = 0;
                 for arg in args.into_iter().rev() {
                     self.gen_expr(arg);
-                    push("a0");
+                    push(&mut self.writer, "a0");
                     nargs += 1;
                 }
 
                 for reg in ARG_REG.iter().take(nargs) {
-                    pop(reg);
+                    pop(&mut self.writer, reg);
                 }
 
-                println!("  call {name}");
+                writeln!(&mut self.writer, "  call {name}").unwrap();
             }
             TypedNodeKind::BinOp {
                 op: BinOp::Assign,
@@ -177,47 +189,47 @@ impl<'src> Codegen<'src> {
                 rhs,
             } => {
                 self.gen_addr(*lhs);
-                push("a0");
+                push(&mut self.writer, "a0");
 
                 self.gen_expr(*rhs);
-                store(&node.ctype.unwrap());
+                store(&mut self.writer, &node.ctype.unwrap());
             }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
                 self.gen_expr(*lhs);
-                push("a0");
+                push(&mut self.writer, "a0");
                 self.gen_expr(*rhs);
-                push("a0");
+                push(&mut self.writer, "a0");
 
-                pop("t1");
-                pop("t0");
+                pop(&mut self.writer, "t1");
+                pop(&mut self.writer, "t0");
 
                 match op {
                     BinOp::Add => {
-                        println!("  add a0, t0, t1");
+                        writeln!(&mut self.writer, "  add a0, t0, t1").unwrap();
                     }
                     BinOp::Sub => {
-                        println!("  sub a0, t0, t1");
+                        writeln!(&mut self.writer, "  sub a0, t0, t1").unwrap();
                     }
                     BinOp::Mul => {
-                        println!("  mul a0, t0, t1");
+                        writeln!(&mut self.writer, "  mul a0, t0, t1").unwrap();
                     }
                     BinOp::Div => {
-                        println!("  div a0, t0, t1");
+                        writeln!(&mut self.writer, "  div a0, t0, t1").unwrap();
                     }
                     BinOp::Eq => {
-                        println!("  xor a0, t0, t1");
-                        println!("  sltiu a0, a0, 1");
+                        writeln!(&mut self.writer, "  xor a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  sltiu a0, a0, 1").unwrap();
                     }
                     BinOp::Ne => {
-                        println!("  xor a0, t0, t1");
-                        println!("  snez a0, a0");
+                        writeln!(&mut self.writer, "  xor a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  snez a0, a0").unwrap();
                     }
                     BinOp::Lt => {
-                        println!("  slt a0, t0, t1");
+                        writeln!(&mut self.writer, "  slt a0, t0, t1").unwrap();
                     }
                     BinOp::Le => {
-                        println!("  slt a0, t1, t0");
-                        println!("  xori a0, a0, 1");
+                        writeln!(&mut self.writer, "  slt a0, t1, t0").unwrap();
+                        writeln!(&mut self.writer, "  xori a0, a0, 1").unwrap();
                     }
                     _ => unreachable!(),
                 }
@@ -239,31 +251,31 @@ impl<'src> Codegen<'src> {
                 if let Some(init) = init {
                     self.gen_stmt(*init);
                 }
-                println!(".L.begin.{}:", self.count);
+                writeln!(&mut self.writer, ".L.begin.{}:", self.count).unwrap();
                 if let Some(cond) = cond {
                     self.gen_expr(*cond);
-                    println!("  beq a0, zero, .L.end.{}", self.count);
+                    writeln!(&mut self.writer, "  beq a0, zero, .L.end.{}", self.count).unwrap();
                 }
                 self.gen_stmt(*then);
                 if let Some(inc) = inc {
                     self.gen_expr(*inc);
                 }
-                println!("  j .L.begin.{}", self.count);
-                println!(".L.end.{}:", self.count);
+                writeln!(&mut self.writer, "  j .L.begin.{}", self.count).unwrap();
+                writeln!(&mut self.writer, ".L.end.{}:", self.count).unwrap();
             }
             TypedNodeKind::If { cond, then, els } => {
                 self.count += 1;
 
                 self.gen_expr(*cond);
-                println!("  beq a0, zero, .L.else.{}", self.count);
+                writeln!(&mut self.writer, "  beq a0, zero, .L.else.{}", self.count).unwrap();
 
                 self.gen_stmt(*then);
-                println!("  j .L.end.{}", self.count);
-                println!(".L.else.{}:", self.count);
+                writeln!(&mut self.writer, "  j .L.end.{}", self.count).unwrap();
+                writeln!(&mut self.writer, ".L.else.{}:", self.count).unwrap();
                 if let Some(els) = els {
                     self.gen_stmt(*els);
                 }
-                println!(".L.end.{}:", self.count);
+                writeln!(&mut self.writer, ".L.end.{}:", self.count).unwrap();
             }
             TypedNodeKind::Block(nodes) => {
                 for node in nodes {
@@ -272,7 +284,12 @@ impl<'src> Codegen<'src> {
             }
             TypedNodeKind::Return(node) => {
                 self.gen_expr(*node);
-                println!("  j .L.return.{}", self.current_fn_name.unwrap());
+                writeln!(
+                    &mut self.writer,
+                    "  j .L.return.{}",
+                    self.current_fn_name.unwrap()
+                )
+                .unwrap();
             }
             TypedNodeKind::ExprStmt(node) => {
                 self.gen_expr(*node);
@@ -288,36 +305,36 @@ fn align_to(n: usize, align: usize) -> usize {
     n.div_ceil(align) * align
 }
 
-fn push(reg: &str) {
-    println!("  # push {reg}");
-    println!("  addi sp, sp, -8");
-    println!("  sd {reg}, 0(sp)");
+fn push(writer: &mut Box<dyn Write>, reg: &str) {
+    writeln!(writer, "  # push {reg}").unwrap();
+    writeln!(writer, "  addi sp, sp, -8").unwrap();
+    writeln!(writer, "  sd {reg}, 0(sp)").unwrap();
 }
 
-fn pop(reg: &str) {
-    println!("  # pop {reg}");
-    println!("  ld {reg}, 0(sp)");
-    println!("  addi sp, sp, 8");
+fn pop(writer: &mut Box<dyn Write>, reg: &str) {
+    writeln!(writer, "  # pop {reg}").unwrap();
+    writeln!(writer, "  ld {reg}, 0(sp)").unwrap();
+    writeln!(writer, "  addi sp, sp, 8").unwrap();
 }
 
-fn load(ty: &CType) {
+fn load(writer: &mut Box<dyn Write>, ty: &CType) {
     if let CTypeKind::Array { .. } = ty.kind {
         return;
     }
 
     if ty.size == 1 {
-        println!("  lb a0, 0(a0)");
+        writeln!(writer, "  lb a0, 0(a0)").unwrap();
     } else {
-        println!("  ld a0, 0(a0)");
+        writeln!(writer, "  ld a0, 0(a0)").unwrap();
     }
 }
 
-fn store(ty: &CType) {
-    pop("a1");
+fn store(writer: &mut Box<dyn Write>, ty: &CType) {
+    pop(writer, "a1");
 
     if ty.size == 1 {
-        println!("  sb a0, 0(a1)");
+        writeln!(writer, "  sb a0, 0(a1)").unwrap();
     } else {
-        println!("  sd a0, 0(a1)");
+        writeln!(writer, "  sd a0, 0(a1)").unwrap();
     }
 }

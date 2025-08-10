@@ -1,7 +1,7 @@
 use core::panic;
 use std::{
     env::args,
-    fs::File,
+    fs::{self, File},
     io::{self, Read, Write},
 };
 
@@ -40,18 +40,75 @@ impl<'src> SourceMap<'src> {
     }
 }
 
-fn main() {
-    let args = args().collect::<Vec<_>>();
-    if args.len() != 2 {
-        panic!("Usage: ./{} <FILENAME>", args[0]);
+fn print_usage(code: i32) -> ! {
+    println!("Usage: gakicc [ -o <PATH> ] <FILE>");
+    std::process::exit(code);
+}
+
+struct CompileOptions<'cmd> {
+    input_path: &'cmd str,
+    output_path: Option<&'cmd str>,
+}
+
+fn parse_args<'cmd>(args: &'cmd [String]) -> CompileOptions<'cmd> {
+    let mut input_path: Option<&str> = None;
+    let mut output_path: Option<&str> = None;
+
+    for i in 0..args.len() {
+        if args[i] == "--help" {
+            print_usage(0);
+        }
+
+        if args[i] == "-o" {
+            output_path = Some(&args[i + 1]);
+            continue;
+        }
+
+        if args[i].starts_with("-o") {
+            output_path = Some(&args[i][2..]);
+            continue;
+        }
+
+        input_path = Some(&args[i]);
     }
 
+    match input_path {
+        Some(input_path) => CompileOptions {
+            input_path,
+            output_path,
+        },
+        None => panic!("no input files"),
+    }
+}
+
+fn get_writer(path: Option<&str>) -> Box<dyn Write> {
+    if let Some(path) = path
+        && path != "-"
+    {
+        Box::new(
+            fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .unwrap_or_else(|_| panic!("failed to open {}", path)),
+        )
+    } else {
+        Box::new(io::stdout())
+    }
+}
+
+fn main() {
+    let args = args().collect::<Vec<_>>();
+
+    let options = parse_args(&args);
+
     let mut source = String::new();
-    if &args[1] == "-" {
+    if options.input_path == "-" {
         io::stdin().read_to_string(&mut source).unwrap();
     } else {
-        let mut file =
-            File::open(&args[1]).unwrap_or_else(|_| panic!("failed to open {}", &args[1]));
+        let mut file = File::open(options.input_path)
+            .unwrap_or_else(|_| panic!("failed to open {}", options.input_path));
         file.read_to_string(&mut source).unwrap();
     }
 
@@ -67,6 +124,7 @@ fn main() {
         .map(TypedObject::from)
         .collect::<Vec<_>>();
 
-    let mut codegen = Codegen::new();
+    let out = get_writer(options.output_path);
+    let mut codegen = Codegen::new(out);
     codegen.codegen(typed_functions);
 }
