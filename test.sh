@@ -19,7 +19,7 @@ assert() {
   expected="$1"
   input="$2"
 
-  RUSTFLAGS=-Awarnings cargo run -q -- "$input" > tmp.s
+  echo "$input" | RUSTFLAGS=-Awarnings cargo run -q -- - > tmp.s
   riscv64-elf-gcc -static -o tmp tmp2.o tmp.s 
   qemu-riscv64 ./tmp
   actual="$?"

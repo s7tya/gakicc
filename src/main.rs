@@ -1,5 +1,9 @@
 use core::panic;
-use std::{env::args, io::Write};
+use std::{
+    env::args,
+    fs::File,
+    io::{self, Read, Write},
+};
 
 use codegen::Codegen;
 use lexer::Lexer;
@@ -39,14 +43,22 @@ impl<'src> SourceMap<'src> {
 fn main() {
     let args = args().collect::<Vec<_>>();
     if args.len() != 2 {
-        panic!("引数の個数が正しくありません");
+        panic!("Usage: ./{} <FILENAME>", args[0]);
     }
 
-    let source = args[1].as_str();
-    let mut lexer = Lexer::new(source);
+    let mut source = String::new();
+    if &args[1] == "-" {
+        io::stdin().read_to_string(&mut source).unwrap();
+    } else {
+        let mut file =
+            File::open(&args[1]).unwrap_or_else(|_| panic!("failed to open {}", &args[1]));
+        file.read_to_string(&mut source).unwrap();
+    }
+
+    let mut lexer = Lexer::new(&source);
     let tokens = lexer.lex();
 
-    let source_map = SourceMap::new(source);
+    let source_map = SourceMap::new(&source);
     let mut parser = Parser::new(&source_map, tokens);
 
     let functions = parser.parse();
