@@ -142,6 +142,14 @@ impl<'src> Codegen<'src> {
             TypedNodeKind::Deref(node) => {
                 self.gen_expr(*node);
             }
+            TypedNodeKind::BinOp {
+                op: BinOp::Comma,
+                lhs,
+                rhs,
+            } => {
+                self.gen_expr(*lhs);
+                self.gen_expr(*rhs);
+            }
             _ => {
                 panic!("{node:?} is not an lvalue");
             }
@@ -191,9 +199,9 @@ impl<'src> Codegen<'src> {
                 store(&mut self.writer, &node.ctype.unwrap());
             }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
-                self.gen_expr(*lhs);
+                self.gen_expr(*lhs.clone());
                 push(&mut self.writer, "a0");
-                self.gen_expr(*rhs);
+                self.gen_expr(*rhs.clone());
                 push(&mut self.writer, "a0");
 
                 pop(&mut self.writer, "t1");
@@ -229,6 +237,10 @@ impl<'src> Codegen<'src> {
                     BinOp::Le => {
                         writeln!(&mut self.writer, "  slt a0, t1, t0").unwrap();
                         writeln!(&mut self.writer, "  xori a0, a0, 1").unwrap();
+                    }
+                    BinOp::Comma => {
+                        self.gen_expr(*lhs);
+                        self.gen_expr(*rhs);
                     }
                     _ => unreachable!(),
                 }

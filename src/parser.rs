@@ -46,6 +46,7 @@ pub enum BinOp {
     Le,
     Assign,
     Mod,
+    Comma,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -488,7 +489,17 @@ impl<'src> Parser<'src> {
     }
 
     fn expr(&mut self) -> Node<'src> {
-        self.assign()
+        let mut node = self.assign();
+
+        if self.consume(",") {
+            node = Node::new(NodeKind::BinOp {
+                op: BinOp::Comma,
+                lhs: Box::new(node),
+                rhs: Box::new(self.expr()),
+            })
+        }
+
+        node
     }
 
     fn assign(&mut self) -> Node<'src> {

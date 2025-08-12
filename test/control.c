@@ -67,6 +67,8 @@ int t10() {
   return j;
 }
 
+int t11() { return 1, 2, 3; }
+
 int main() {
   ASSERT(3, t1());
   ASSERT(3, t2());
@@ -81,6 +83,8 @@ int main() {
 
   ASSERT(10, t9());
   ASSERT(55, t10());
+
+  ASSERT(3, t11());
 
   printf("OK\n");
   return 0;
