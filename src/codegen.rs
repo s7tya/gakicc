@@ -51,9 +51,17 @@ impl<'src> Codegen<'src> {
             そのまま stack_size を持たせているが、 Rust で ObjectKind::Function に stack_size を持たせるのが
             あんまり綺麗じゃない気がしてこの実装になっている。
         */
-        let mut stack_sizes = vec![];
-        for function in &functions {
-            if let TypedObject::Function { locals, .. } = function {
+
+        self.emit_data(&functions);
+
+        for function in functions {
+            if let TypedObject::Function {
+                name,
+                node,
+                params,
+                locals,
+            } = function
+            {
                 let mut offset = 0;
 
                 for local in locals.iter().rev() {
@@ -63,19 +71,7 @@ impl<'src> Codegen<'src> {
                     }
                 }
                 let stack_size = align_to(offset, 16);
-                stack_sizes.push(stack_size);
-            } else {
-                stack_sizes.push(0);
-            }
-        }
 
-        self.emit_data(&functions);
-
-        for (function_index, function) in functions.into_iter().enumerate() {
-            if let TypedObject::Function {
-                name, node, params, ..
-            } = function
-            {
                 self.current_fn_name = Some(name);
 
                 writeln!(&mut self.writer, "  .section .text").unwrap();
@@ -86,12 +82,7 @@ impl<'src> Codegen<'src> {
                 push(&mut self.writer, "ra");
                 push(&mut self.writer, "fp");
                 writeln!(&mut self.writer, "  mv fp, sp").unwrap();
-                writeln!(
-                    &mut self.writer,
-                    "  addi sp, sp, -{}",
-                    stack_sizes[function_index]
-                )
-                .unwrap();
+                writeln!(&mut self.writer, "  addi sp, sp, -{stack_size}").unwrap();
 
                 for (param, reg) in params.iter().zip(ARG_REG) {
                     let offset = self.locals.get(param.name().unwrap()).unwrap();
@@ -117,6 +108,8 @@ impl<'src> Codegen<'src> {
                 pop(&mut self.writer, "ra");
 
                 writeln!(&mut self.writer, "  ret").unwrap();
+
+                self.locals.clear();
             }
         }
     }
@@ -137,7 +130,7 @@ impl<'src> Codegen<'src> {
                     }
                 }
                 TypedObject::StringLiteral { id, .. } => {
-                    writeln!(&mut self.writer, "  la a0, .L..{id}");
+                    writeln!(&mut self.writer, "  la a0, .L..{id}").unwrap();
                 }
                 _ => panic!(
                     "object.kind is not TypedObjectKind::Object or TypedObjectKind::StringLiteral"
