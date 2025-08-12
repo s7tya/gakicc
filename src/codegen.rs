@@ -212,6 +212,9 @@ impl<'src> Codegen<'src> {
                     BinOp::Div => {
                         writeln!(&mut self.writer, "  div a0, t0, t1").unwrap();
                     }
+                    BinOp::Mod => {
+                        writeln!(&mut self.writer, "  remw a0, t0, t1").unwrap();
+                    }
                     BinOp::Eq => {
                         writeln!(&mut self.writer, "  xor a0, t0, t1").unwrap();
                         writeln!(&mut self.writer, "  sltiu a0, a0, 1").unwrap();

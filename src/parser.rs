@@ -45,6 +45,7 @@ pub enum BinOp {
     Lt,
     Le,
     Assign,
+    Mod,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -596,6 +597,12 @@ impl<'src> Parser<'src> {
                     lhs: Box::new(node),
                     rhs: Box::new(self.unary()),
                 });
+            } else if self.consume("%") {
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Mod,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.unary()),
+                })
             } else {
                 return node;
             }

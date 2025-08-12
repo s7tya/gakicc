@@ -12,6 +12,10 @@ int main() {
   ASSERT(10, - -10);
   ASSERT(10, - -+10);
 
+  ASSERT(1, 10 % 3);
+  ASSERT(3, 10 % 7);
+  ASSERT(0, 5 % 5);
+
   ASSERT(0, 0 == 1);
   ASSERT(1, 42 == 42);
   ASSERT(1, 0 != 1);
