@@ -1,3 +1,5 @@
+use crate::escape::unescape;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
     Reserved,
@@ -133,45 +135,23 @@ impl<'src> Lexer<'src> {
                 let start = self.cursor;
                 self.cursor += 1;
 
-                while !self.source[self.cursor..].starts_with('\"') {
+                while let Some(c) = self.source[self.cursor..].chars().next() {
+                    if self.source[self.cursor..].starts_with("\\\\")
+                        || self.source[self.cursor..].starts_with("\\\"")
+                    {
+                        self.cursor += 2;
+                        continue;
+                    }
+
+                    if c == '"' {
+                        break;
+                    }
+
                     self.cursor += 1;
                 }
 
-                fn get_escaped_char(c: char) -> Option<char> {
-                    match c {
-                        'a' => Some(7 as char), // bell
-                        'b' => Some(8 as char), // backspace
-                        't' => Some('\t'),
-                        'n' => Some('\n'),
-                        'v' => Some(0xb as char), // vertical tab
-                        'f' => Some(0xc as char), // form feed
-                        'r' => Some('\r'),
-                        '\\' => Some('\\'),
-                        _ => None,
-                    }
-                }
-
-                let chars = self.source[(start + 1)..self.cursor]
-                    .chars()
-                    .collect::<Vec<_>>();
-                let mut string_lit_chars = vec![];
-                let mut iter = chars.iter();
-                while let Some(&c) = iter.next() {
-                    if c == '\\'
-                        && let Some(&next_c) = iter.next()
-                    {
-                        let converted_c = get_escaped_char(next_c)
-                            .unwrap_or_else(|| panic!("unsupported escape: {next_c}"));
-                        string_lit_chars.push(converted_c);
-                    } else {
-                        string_lit_chars.push(c);
-                    }
-                }
-
-                let string_lit = string_lit_chars.iter().collect::<String>();
-
                 tokens.push(Token {
-                    kind: TokenKind::String(string_lit),
+                    kind: TokenKind::String(unescape(&self.source[(start + 1)..self.cursor])),
                     span: Span {
                         lo: start,
                         hi: (self.cursor + 1),
@@ -179,7 +159,6 @@ impl<'src> Lexer<'src> {
                 });
 
                 self.cursor += 1;
-
                 continue;
             }
 

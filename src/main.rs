@@ -13,6 +13,7 @@ use crate::{ctype::TypedObject, lexer::Span};
 
 mod codegen;
 mod ctype;
+mod escape;
 mod lexer;
 mod parser;
 
