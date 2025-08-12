@@ -1,4 +1,7 @@
-use crate::ctype::{CType, CTypeKind, TypedObject};
+use crate::{
+    ctype::{CType, CTypeKind, TypedObject},
+    log,
+};
 use std::{collections::HashMap, io::Write};
 
 use crate::{
@@ -40,6 +43,24 @@ impl<'src> Codegen<'src> {
                 writeln!(&mut self.writer, "  .global {name}").unwrap();
                 writeln!(&mut self.writer, "  .section .data").unwrap();
                 writeln!(&mut self.writer, "{name}:").unwrap();
+
+                let string = string
+                    .chars()
+                    .map(|c| match c {
+                        '\x07' => "\\x7".to_string(), // bell
+                        '\x08' => "\\b".to_string(),  // backspace
+                        '\t' => "\\t".to_string(),
+                        '\n' => "\\n".to_string(),
+                        '\x0b' => "\\v".to_string(), // vertical tab
+                        '\x0c' => "\\f".to_string(), // form feed
+                        '\r' => "\\r".to_string(),
+                        '\\' => "\\\\".to_string(),
+                        _ => c.to_string(),
+                    })
+                    .collect::<String>();
+
+                log(&format!("formatted: {string:?}"));
+
                 writeln!(&mut self.writer, "  .string \"{string}\"").unwrap();
             }
         }

@@ -8,13 +8,13 @@ use crate::{
 pub enum Object<'src> {
     Object {
         name: &'src str,
-        ctype: CType<'src>,
+        ctype: CType,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType<'src>,
-        string: &'src str,
+        ctype: CType,
+        string: String,
     },
     Function {
         name: &'src str,
@@ -91,7 +91,7 @@ impl<'src> Node<'src> {
 
 pub struct Parser<'src> {
     source_map: &'src SourceMap<'src>,
-    tokens: Vec<Token<'src>>,
+    tokens: Vec<Token>,
     cursor: usize,
     locals: Vec<Object<'src>>,
     pub globals: Vec<Object<'src>>,
@@ -99,7 +99,7 @@ pub struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    pub fn new(source_map: &'src SourceMap<'src>, tokens: Vec<Token<'src>>) -> Self {
+    pub fn new(source_map: &'src SourceMap<'src>, tokens: Vec<Token>) -> Self {
         Self {
             source_map,
             tokens,
@@ -153,7 +153,7 @@ impl<'src> Parser<'src> {
         );
     }
 
-    fn new_var(&mut self, name: &'src str, ctype: CType<'src>, is_local: bool) -> Object<'src> {
+    fn new_var(&mut self, name: &'src str, ctype: CType, is_local: bool) -> Object<'src> {
         let obj = Object::Object {
             name,
             ctype,
@@ -170,7 +170,7 @@ impl<'src> Parser<'src> {
         obj
     }
 
-    fn new_string_literal(&mut self, string: &'src str) -> Object<'src> {
+    fn new_string_literal(&mut self, string: String) -> Object<'src> {
         let obj = Object::StringLiteral {
             id: self.anon_gvar_count,
             ctype: array_of(
@@ -189,7 +189,7 @@ impl<'src> Parser<'src> {
         obj
     }
 
-    fn create_param_lvars(&mut self, ctype: CType<'src>) {
+    fn create_param_lvars(&mut self, ctype: CType) {
         if let CTypeKind::Function { params, .. } = ctype.kind {
             for param in params {
                 let name = self.get_ident(param.name.clone().unwrap());
@@ -242,7 +242,7 @@ impl<'src> Parser<'src> {
         self.globals.clone()
     }
 
-    fn function(&mut self, basety: CType<'src>) -> Object<'src> {
+    fn function(&mut self, basety: CType) -> Object<'src> {
         let ty = self.declarator(basety);
 
         self.locals = vec![];
@@ -260,7 +260,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn global_variable(&mut self, basety: CType<'src>) {
+    fn global_variable(&mut self, basety: CType) {
         let mut is_first = true;
 
         while !self.consume(";") {
@@ -350,7 +350,7 @@ impl<'src> Parser<'src> {
         self.expr_stmt()
     }
 
-    fn get_ident(&mut self, token: Token<'src>) -> &'src str {
+    fn get_ident(&mut self, token: Token) -> &'src str {
         if token.kind != TokenKind::Ident {
             self.error_at(&format!("expected identifier, got {token:?}"));
         }
@@ -358,7 +358,7 @@ impl<'src> Parser<'src> {
         self.source_map.span_to_str(&token.span)
     }
 
-    fn declspec(&mut self) -> CType<'src> {
+    fn declspec(&mut self) -> CType {
         if self.consume("char") {
             return CType::new(CTypeKind::Char, None, 1);
         }
@@ -368,7 +368,7 @@ impl<'src> Parser<'src> {
         CType::new(CTypeKind::Int, None, 8)
     }
 
-    fn func_params(&mut self, ty: CType<'src>) -> CType<'src> {
+    fn func_params(&mut self, ty: CType) -> CType {
         let mut params = vec![];
         let mut is_head = true;
         while !self.consume(")") {
@@ -393,7 +393,7 @@ impl<'src> Parser<'src> {
         )
     }
 
-    fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
+    fn type_suffix(&mut self, ty: CType) -> CType {
         if self.consume("(") {
             return self.func_params(ty);
         }
@@ -408,7 +408,7 @@ impl<'src> Parser<'src> {
         ty
     }
 
-    fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+    fn declarator(&mut self, mut ty: CType) -> CType {
         while self.consume("*") {
             ty = CType::pointer_to(ty);
         }
@@ -699,7 +699,7 @@ impl<'src> Parser<'src> {
             return Node::new(NodeKind::Var(Box::new(var)));
         }
 
-        if let TokenKind::String(s) = token.kind {
+        if let TokenKind::String(s) = token.kind.clone() {
             self.cursor += 1;
             return Node::new(NodeKind::Var(Box::new(self.new_string_literal(s))));
         }

@@ -7,13 +7,13 @@ use crate::{
 pub enum TypedObject<'src> {
     Object {
         name: &'src str,
-        ctype: CType<'src>,
+        ctype: CType,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType<'src>,
-        string: &'src str,
+        ctype: CType,
+        string: String,
     },
     Function {
         name: &'src str,
@@ -72,7 +72,7 @@ impl<'src> From<Object<'src>> for TypedObject<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypedNode<'src> {
     pub kind: TypedNodeKind<'src>,
-    pub ctype: Option<CType<'src>>,
+    pub ctype: Option<CType>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -107,33 +107,33 @@ pub enum TypedNodeKind<'src> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum CTypeKind<'src> {
+pub enum CTypeKind {
     Int,
     Char,
-    Ptr(Box<CType<'src>> /* ポイント先の型 */),
+    Ptr(Box<CType> /* ポイント先の型 */),
     Function {
-        return_ty: Box<CType<'src>>,
-        params: Vec<CType<'src>>,
+        return_ty: Box<CType>,
+        params: Vec<CType>,
     },
     Array {
-        base: Box<CType<'src>>,
+        base: Box<CType>,
         len: usize,
     },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct CType<'src> {
-    pub kind: CTypeKind<'src>,
-    pub name: Option<Token<'src>>,
+pub struct CType {
+    pub kind: CTypeKind,
+    pub name: Option<Token>,
     pub size: usize,
 }
 
-impl<'src> CType<'src> {
-    pub fn new(kind: CTypeKind<'src>, name: Option<Token<'src>>, size: usize) -> Self {
+impl CType {
+    pub fn new(kind: CTypeKind, name: Option<Token>, size: usize) -> Self {
         CType { kind, name, size }
     }
 
-    pub fn pointer_to(base: CType<'src>) -> Self {
+    pub fn pointer_to(base: CType) -> Self {
         Self {
             kind: CTypeKind::Ptr(Box::new(base)),
             name: None,
@@ -142,7 +142,7 @@ impl<'src> CType<'src> {
     }
 }
 
-pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
+pub fn array_of(base: CType, len: usize) -> CType {
     let size = base.size;
     CType::new(
         CTypeKind::Array {
