@@ -242,6 +242,20 @@ impl<'src> Codegen<'src> {
                         self.gen_expr(*lhs);
                         self.gen_expr(*rhs);
                     }
+                    BinOp::LogOr => {
+                        self.count += 1;
+                        writeln!(&mut self.writer, "  li a0, 1").unwrap();
+                        writeln!(&mut self.writer, "  bne t0, zero, .L.{}", self.count).unwrap();
+                        writeln!(&mut self.writer, "  snez a0, t1").unwrap();
+                        writeln!(&mut self.writer, ".L.{}:", self.count).unwrap();
+                    }
+                    BinOp::LogAnd => {
+                        self.count += 1;
+                        writeln!(&mut self.writer, "  li a0, 0").unwrap();
+                        writeln!(&mut self.writer, "  beq t0, zero, .L.{}", self.count).unwrap();
+                        writeln!(&mut self.writer, "  snez a0, t1").unwrap();
+                        writeln!(&mut self.writer, ".L.{}:", self.count).unwrap();
+                    }
                     _ => unreachable!(),
                 }
             }

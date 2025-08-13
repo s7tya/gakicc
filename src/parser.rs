@@ -47,6 +47,8 @@ pub enum BinOp {
     Assign,
     Mod,
     Comma,
+    LogAnd,
+    LogOr,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -247,8 +249,9 @@ impl<'src> Parser<'src> {
             let basety = self.declspec();
 
             if self.is_function() {
-                let function = self.function(basety);
-                self.globals.push(function);
+                if let Some(function) = self.function(basety) {
+                    self.globals.push(function);
+                }
             } else {
                 self.global_variable(basety);
             }
@@ -257,8 +260,12 @@ impl<'src> Parser<'src> {
         self.globals.clone()
     }
 
-    fn function(&mut self, basety: CType) -> Object<'src> {
+    fn function(&mut self, basety: CType) -> Option<Object<'src>> {
         let ty = self.declarator(basety);
+
+        if self.consume(";") {
+            return None;
+        }
 
         self.locals = vec![];
 
@@ -267,12 +274,12 @@ impl<'src> Parser<'src> {
         let params = self.locals.clone();
         self.expect("{");
 
-        Object::Function {
+        Some(Object::Function {
             name,
             node: self.compound_stmt(),
             locals: self.locals.clone(),
             params,
-        }
+        })
     }
 
     fn global_variable(&mut self, basety: CType) {
@@ -376,6 +383,11 @@ impl<'src> Parser<'src> {
     fn declspec(&mut self) -> CType {
         if self.consume("char") {
             return CType::new(CTypeKind::Char, None, 1);
+        }
+
+        if self.consume("void") {
+            // FIXME: `void* memset();` みたいな入力を処理。実際にはこの結果は捨てられているので Int を仮置き
+            return CType::new(CTypeKind::Int, None, 1);
         }
 
         self.expect("int");
@@ -516,7 +528,7 @@ impl<'src> Parser<'src> {
     }
 
     fn assign(&mut self) -> Node<'src> {
-        let mut node = self.equality();
+        let mut node = self.logor();
 
         if self.consume("=") {
             node = Node::new(NodeKind::BinOp {
@@ -527,6 +539,38 @@ impl<'src> Parser<'src> {
         }
 
         node
+    }
+
+    fn logor(&mut self) -> Node<'src> {
+        let mut node = self.logand();
+
+        loop {
+            if self.consume("||") {
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::LogOr,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.equality()),
+                })
+            } else {
+                return node;
+            }
+        }
+    }
+
+    fn logand(&mut self) -> Node<'src> {
+        let mut node = self.equality();
+
+        loop {
+            if self.consume("&&") {
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::LogAnd,
+                    lhs: Box::new(node),
+                    rhs: Box::new(self.equality()),
+                })
+            } else {
+                return node;
+            }
+        }
     }
 
     fn equality(&mut self) -> Node<'src> {
