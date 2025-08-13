@@ -6,6 +6,7 @@ pub enum TokenKind {
     Ident,
     Num(i32),
     String(String),
+    Char(char),
     Eof,
 }
 
@@ -152,6 +153,40 @@ impl<'src> Lexer<'src> {
 
                 tokens.push(Token {
                     kind: TokenKind::String(unescape(&self.source[(start + 1)..self.cursor])),
+                    span: Span {
+                        lo: start,
+                        hi: (self.cursor + 1),
+                    },
+                });
+
+                self.cursor += 1;
+                continue;
+            }
+
+            if c == '\'' {
+                let start = self.cursor;
+                self.cursor += 1;
+
+                while let Some(c) = self.source[self.cursor..].chars().next() {
+                    if self.source[self.cursor..].starts_with(r"\'") {
+                        self.cursor += 2;
+                        continue;
+                    }
+
+                    if c == '\'' {
+                        break;
+                    }
+
+                    self.cursor += 1;
+                }
+
+                tokens.push(Token {
+                    kind: TokenKind::Char(
+                        unescape(&self.source[(start + 1)..self.cursor])
+                            .chars()
+                            .next()
+                            .unwrap(),
+                    ),
                     span: Span {
                         lo: start,
                         hi: (self.cursor + 1),

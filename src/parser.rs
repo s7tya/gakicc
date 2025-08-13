@@ -779,6 +779,12 @@ impl<'src> Parser<'src> {
             return Node::new(NodeKind::Var(Box::new(self.new_string_literal(s))));
         }
 
+        if let TokenKind::Char(c) = token.kind.clone() {
+            self.cursor += 1;
+            let n = u32::from(c);
+            return Node::new(NodeKind::Num(i32::try_from(n).unwrap()));
+        }
+
         if matches!(token.kind, TokenKind::Num(..)) {
             return Node::new(NodeKind::Num(self.expect_number()));
         }

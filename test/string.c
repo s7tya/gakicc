@@ -34,6 +34,13 @@ int main() {
   ASSERT(0, "\x00"[0]);
   ASSERT(119, "\x77"[0]);
 
+  ASSERT(97, 'a');
+  ASSERT(32, ' ');
+  ASSERT(10, '\n');
+  ASSERT(0, '\0');
+  ASSERT(0, '\00');
+  ASSERT(12, '\xC');
+
   printf("OK\n");
   return 0;
 }
