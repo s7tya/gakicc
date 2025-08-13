@@ -69,6 +69,20 @@ int t10() {
 
 int t11() { return 1, 2, 3; }
 
+int t12() {
+  int j = 0;
+  for (int i = 0; i <= 10; i = i + 1) j = j + i;
+  return j;
+}
+
+// TODO: block scope
+// int t13() {
+//   int i = 3;
+//   int j = 0;
+//   for (int i = 0; i <= 10; i = i + 1) j = j + i;
+//   return i;
+// }
+
 int main() {
   ASSERT(3, t1());
   ASSERT(3, t2());
@@ -112,6 +126,9 @@ int main() {
   ASSERT(0, !!!100);
   ASSERT(0, !!0);
   ASSERT(1, !!!0);
+
+  ASSERT(55, t12());
+  // ASSERT(3, t13());
 
   printf("OK\n");
   return 0;

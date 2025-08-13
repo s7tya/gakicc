@@ -309,9 +309,16 @@ impl<'src> Parser<'src> {
 
         if self.consume("for") {
             self.expect("(");
-            let init = Some(self.expr_stmt());
+            let init = Some({
+                if self.is_typename() {
+                    self.declaration()
+                } else {
+                    self.expr_stmt()
+                }
+            });
 
             let mut cond = None;
+
             if !self.consume(";") {
                 cond = Some(self.expr());
                 self.expect(";");
@@ -444,7 +451,7 @@ impl<'src> Parser<'src> {
 
         let mut i = 0;
         let mut cur = vec![];
-        while !self.is_equal(";") {
+        while !self.consume(";") {
             if i > 0 {
                 self.expect(",");
             }
