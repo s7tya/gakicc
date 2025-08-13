@@ -40,6 +40,7 @@ int main() {
   ASSERT(0, '\0');
   ASSERT(0, '\00');
   ASSERT(12, '\xC');
+  ASSERT(92, '\\');
 
   printf("OK\n");
   return 0;

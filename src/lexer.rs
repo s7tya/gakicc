@@ -168,7 +168,9 @@ impl<'src> Lexer<'src> {
                 self.cursor += 1;
 
                 while let Some(c) = self.source[self.cursor..].chars().next() {
-                    if self.source[self.cursor..].starts_with(r"\'") {
+                    if self.source[self.cursor..].starts_with(r"\\")
+                        || self.source[self.cursor..].starts_with(r"\'")
+                    {
                         self.cursor += 2;
                         continue;
                     }
