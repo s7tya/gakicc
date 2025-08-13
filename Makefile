@@ -17,10 +17,10 @@ test/%.s: test/%.c
 test/%.exe: test/%.s
 	$(CC) -static -o $@ $< -xc test/common
 
-test: $(TESTS)
-	for i in $^; do echo $$i; $(SH) ./$$i || exit 1; echo; done
+test: clean $(TESTS)
+	for i in $(TESTS); do echo $$i; $(SH) ./$$i || exit 1; echo; done
 	$(GAKICC) -o test/donut/donut.s test/donut/donut.c && $(CC) -static -o test/donut/donut.exe test/donut/donut.s && $(SH) ./test/donut/donut.exe | diff test/donut/snap.txt - 2>&1 > /dev/null && echo "OK"
 	test/driver.sh
 
 clean:
-	rm -f test/*.s test/*.exe
+	rm -f test/*.s test/*.exe test/donut/donut.s test/donut/donut.exe

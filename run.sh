@@ -1,0 +1,1 @@
+riscv64-linux-gnu-gcc -o- -E -P -C $1 -std=c11 -g -fno-common | RUSTFLAGS=-Awarnings cargo run -q -- -o tmp.s - && riscv64-linux-gnu-gcc tmp.s -xc test/common -static -o tmp && qemu-riscv64 ./tmp
