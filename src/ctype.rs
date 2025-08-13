@@ -108,6 +108,7 @@ pub enum TypedNodeKind<'src> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum CTypeKind {
+    Void,
     Int,
     Char,
     Ptr(Box<CType> /* ポイント先の型 */),
@@ -435,6 +436,10 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 if let CTypeKind::Array { base, .. } | CTypeKind::Ptr(base) =
                     &typed_node.ctype.clone().unwrap().kind
                 {
+                    if base.kind == CTypeKind::Void {
+                        panic!("invalid pointer dereference");
+                    }
+
                     return TypedNode {
                         kind: TypedNodeKind::Deref(Box::new(typed_node)),
                         ctype: Some((**base).clone()),

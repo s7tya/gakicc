@@ -223,7 +223,7 @@ impl<'src> Parser<'src> {
     }
 
     fn is_typename(&mut self) -> bool {
-        self.is_equal("int") || self.is_equal("char")
+        self.is_equal("void") || self.is_equal("int") || self.is_equal("char")
     }
 
     pub fn parse(&mut self) -> Vec<Object> {
@@ -370,13 +370,12 @@ impl<'src> Parser<'src> {
     }
 
     fn declspec(&mut self) -> CType {
-        if self.consume("char") {
-            return CType::new(CTypeKind::Char, None, 1);
+        if self.consume("void") {
+            return CType::new(CTypeKind::Void, None, 1);
         }
 
-        if self.consume("void") {
-            // FIXME: `void* memset();` みたいな入力を処理。実際にはこの結果は捨てられているので Int を仮置き
-            return CType::new(CTypeKind::Int, None, 1);
+        if self.consume("char") {
+            return CType::new(CTypeKind::Char, None, 1);
         }
 
         self.expect("int");
@@ -458,6 +457,10 @@ impl<'src> Parser<'src> {
             i += 1;
 
             let ty = self.declarator(basety.clone());
+            if let CTypeKind::Void = ty.kind {
+                self.error_at("variable declared void");
+            }
+
             let name = self.get_ident(ty.name.clone().unwrap());
             let obj = self.new_var(name, ty, true);
 

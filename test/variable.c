@@ -217,6 +217,11 @@ int main() {
   ASSERT(2, t32());
   ASSERT(3, t33());
 
+  // TODO: block scope
+  {
+    void *x;
+  }
+
   printf("OK\n");
   return 0;
 }
