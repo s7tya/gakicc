@@ -105,6 +105,14 @@ int main() {
   ASSERT(0, 1 && 0);
   ASSERT(1, 1 && 1);
 
+  ASSERT(0, !1);
+  ASSERT(1, !0);
+  ASSERT(0, !100);
+  ASSERT(1, !!100);
+  ASSERT(0, !!!100);
+  ASSERT(0, !!0);
+  ASSERT(1, !!!0);
+
   printf("OK\n");
   return 0;
 }

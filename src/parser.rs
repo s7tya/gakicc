@@ -704,6 +704,14 @@ impl<'src> Parser<'src> {
             return Node::new(NodeKind::Deref(Box::new(self.unary())));
         }
 
+        if self.consume("!") {
+            return Node::new(NodeKind::BinOp {
+                op: BinOp::Eq,
+                lhs: Box::new(Node::new(NodeKind::Num(0))),
+                rhs: Box::new(self.unary()),
+            });
+        }
+
         self.postfix()
     }
 
