@@ -85,7 +85,9 @@ impl<'src> Codegen<'src> {
                 push(&mut self.writer, "ra");
                 push(&mut self.writer, "fp");
                 writeln!(&mut self.writer, "  mv fp, sp").unwrap();
-                writeln!(&mut self.writer, "  addi sp, sp, -{stack_size}").unwrap();
+
+                // RISC-V における即値の範囲は [-2048, 2047] なので、それを超える場合には addi をその分繰り返す
+                addi(&mut self.writer, "sp", "sp", 0 - (stack_size as i32));
 
                 for (param, reg) in params.iter().zip(ARG_REG) {
                     let offset = self.locals.get(param.name().unwrap()).unwrap();
@@ -122,12 +124,12 @@ impl<'src> Codegen<'src> {
             TypedNodeKind::Var(object) => match *object {
                 TypedObject::Object { name, is_local, .. } => {
                     if is_local {
-                        writeln!(
+                        addi(
                             &mut self.writer,
-                            "  addi a0, fp, {}",
-                            self.locals.get(name).unwrap()
-                        )
-                        .unwrap();
+                            "a0",
+                            "fp",
+                            *self.locals.get(name).unwrap(),
+                        );
                     } else {
                         writeln!(&mut self.writer, "  la a0, {name}").unwrap();
                     }
@@ -273,34 +275,38 @@ impl<'src> Codegen<'src> {
                 then,
             } => {
                 self.count += 1;
+                let count = self.count;
+
                 if let Some(init) = init {
                     self.gen_stmt(*init);
                 }
-                writeln!(&mut self.writer, ".L.begin.{}:", self.count).unwrap();
+                writeln!(&mut self.writer, ".L.begin.{count}:").unwrap();
                 if let Some(cond) = cond {
                     self.gen_expr(*cond);
-                    writeln!(&mut self.writer, "  beq a0, zero, .L.end.{}", self.count).unwrap();
+                    writeln!(&mut self.writer, "  beq a0, zero, .L.end.{count}").unwrap();
                 }
                 self.gen_stmt(*then);
                 if let Some(inc) = inc {
                     self.gen_expr(*inc);
                 }
-                writeln!(&mut self.writer, "  j .L.begin.{}", self.count).unwrap();
-                writeln!(&mut self.writer, ".L.end.{}:", self.count).unwrap();
+                writeln!(&mut self.writer, "  j .L.begin.{count}").unwrap();
+                writeln!(&mut self.writer, ".L.end.{count}:").unwrap();
             }
             TypedNodeKind::If { cond, then, els } => {
                 self.count += 1;
+                let count = self.count;
 
                 self.gen_expr(*cond);
-                writeln!(&mut self.writer, "  beq a0, zero, .L.else.{}", self.count).unwrap();
+                writeln!(&mut self.writer, "  beq a0, zero, .L.else.{count}").unwrap();
 
                 self.gen_stmt(*then);
-                writeln!(&mut self.writer, "  j .L.end.{}", self.count).unwrap();
-                writeln!(&mut self.writer, ".L.else.{}:", self.count).unwrap();
+                writeln!(&mut self.writer, "  j .L.end.{count}").unwrap();
+                writeln!(&mut self.writer, ".L.else.{count}:").unwrap();
+
                 if let Some(els) = els {
                     self.gen_stmt(*els);
                 }
-                writeln!(&mut self.writer, ".L.end.{}:", self.count).unwrap();
+                writeln!(&mut self.writer, ".L.end.{count}:").unwrap();
             }
             TypedNodeKind::Block(nodes) => {
                 for node in nodes {
@@ -361,5 +367,17 @@ fn store(writer: &mut Box<dyn Write>, ty: &CType) {
         writeln!(writer, "  sb a0, 0(a1)").unwrap();
     } else {
         writeln!(writer, "  sd a0, 0(a1)").unwrap();
+    }
+}
+
+fn addi(writer: &mut Box<dyn Write>, reg1: &str, reg2: &str, imm: i32) {
+    if (-2048..=2047).contains(&imm) {
+        writeln!(writer, "  addi {reg1}, {reg2}, {imm}").unwrap();
+    } else {
+        // FIXME: もうちょっと低コストな方法がありそう
+        push(writer, "t0");
+        writeln!(writer, "  li t0,{imm}").unwrap();
+        writeln!(writer, "  add {reg1}, {reg2}, t0").unwrap();
+        pop(writer, "t0");
     }
 }

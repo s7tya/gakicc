@@ -311,8 +311,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         }),
                         Some(CType {
                             kind: CTypeKind::Int | CTypeKind::Char,
-                            name: None,
-                            size: 8,
+                            ..
                         }),
                     ) => {
                         let rhs = TypedNode {
