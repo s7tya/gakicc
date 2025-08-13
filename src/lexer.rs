@@ -1,4 +1,4 @@
-use crate::escape::unescape;
+use crate::{SourceMap, escape::unescape};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenKind {
@@ -25,6 +25,7 @@ pub struct Token {
 pub struct Lexer<'src> {
     source: &'src str,
     cursor: usize,
+    source_map: &'src SourceMap<'src>,
 }
 
 fn is_ident_first(c: char) -> bool {
@@ -36,8 +37,12 @@ fn is_ident_follow(c: char) -> bool {
 }
 
 impl<'src> Lexer<'src> {
-    pub fn new(source: &'src str) -> Self {
-        Self { source, cursor: 0 }
+    pub fn new(source_map: &'src SourceMap, source: &'src str) -> Self {
+        Self {
+            source,
+            cursor: 0,
+            source_map,
+        }
     }
 
     pub fn lex(&mut self) -> Vec<Token> {
@@ -60,7 +65,13 @@ impl<'src> Lexer<'src> {
                 if let Some(offset) = self.source[self.cursor..].find("*/") {
                     self.cursor += offset + 2;
                 } else {
-                    panic!("unclosed block comment");
+                    self.source_map.error_at(
+                        &Span {
+                            lo: self.cursor,
+                            hi: self.cursor,
+                        },
+                        "unclosed block comment",
+                    );
                 }
 
                 continue;
@@ -152,7 +163,19 @@ impl<'src> Lexer<'src> {
                 }
 
                 tokens.push(Token {
-                    kind: TokenKind::String(unescape(&self.source[(start + 1)..self.cursor])),
+                    kind: TokenKind::String(
+                        unescape(&self.source[(start + 1)..self.cursor]).unwrap_or_else(
+                            |(pos1, pos2)| {
+                                self.source_map.error_at(
+                                    &Span {
+                                        lo: start + pos1,
+                                        hi: start + pos2,
+                                    },
+                                    "failed to unescape",
+                                )
+                            },
+                        ),
+                    ),
                     span: Span {
                         lo: start,
                         hi: (self.cursor + 1),
@@ -185,6 +208,15 @@ impl<'src> Lexer<'src> {
                 tokens.push(Token {
                     kind: TokenKind::Char(
                         unescape(&self.source[(start + 1)..self.cursor])
+                            .unwrap_or_else(|(p1, p2)| {
+                                self.source_map.error_at(
+                                    &Span {
+                                        lo: start + p1,
+                                        hi: start + p2,
+                                    },
+                                    "failed to unescape",
+                                )
+                            })
                             .chars()
                             .next()
                             .unwrap(),
@@ -220,7 +252,13 @@ impl<'src> Lexer<'src> {
                 continue;
             }
 
-            panic!("トークナイズできません: {}", &self.source[self.cursor..]);
+            self.source_map.error_at(
+                &Span {
+                    lo: self.cursor,
+                    hi: self.cursor,
+                },
+                "トークナイズできません",
+            )
         }
 
         tokens.push(Token {

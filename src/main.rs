@@ -39,6 +39,49 @@ impl<'src> SourceMap<'src> {
         // TODO: ここで範囲外の場合をハンドル
         &self.source[span.lo..span.hi]
     }
+
+    pub fn error_at(&self, span: &Span, message: &str) -> ! {
+        let lines = self.source.split("\n").collect::<Vec<_>>();
+
+        let mut line = 0;
+        let mut prev_cursor = 0;
+        let mut start = 0;
+
+        for (i, l) in lines.iter().enumerate() {
+            let end = start + l.len();
+            if span.lo <= end {
+                line = i;
+                prev_cursor = start;
+                break;
+            }
+            start = end + 1;
+        }
+
+        let start_line = line.saturating_sub(2);
+        let end_line = (line + 2).min(lines.len().saturating_sub(1));
+
+        panic!(
+            "{}\n",
+            (start_line..=end_line)
+                .map(|i| {
+                    format!(
+                        "\x1b[36m{:3} | \x1b[m{}\n{}",
+                        i + 1,
+                        lines[i],
+                        if line == i {
+                            format!(
+                                "\x1b[36m    | \x1b[1;31m{}{} {message}\x1b[m\n",
+                                " ".repeat(span.lo - prev_cursor),
+                                "^".repeat(usize::max(span.hi - span.lo, 1)),
+                            )
+                        } else {
+                            "".to_string()
+                        }
+                    )
+                })
+                .collect::<String>(),
+        );
+    }
 }
 
 fn print_usage(code: i32) -> ! {
@@ -113,10 +156,11 @@ fn main() {
         file.read_to_string(&mut source).unwrap();
     }
 
-    let mut lexer = Lexer::new(&source);
+    let source_map = SourceMap::new(&source);
+
+    let mut lexer = Lexer::new(&source_map, &source);
     let tokens = lexer.lex();
 
-    let source_map = SourceMap::new(&source);
     let mut parser = Parser::new(&source_map, tokens);
 
     let functions = parser.parse();

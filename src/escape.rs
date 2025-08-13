@@ -1,10 +1,12 @@
-pub fn unescape(input: &str) -> String {
+pub fn unescape(input: &str) -> Result<String, (usize, usize)> {
     let mut iter = input.chars().peekable();
     let mut s = String::new();
     while let Some(c) = iter.next() {
         if c == '\\'
             && let Some(next_c) = iter.next()
         {
+            let start = input.chars().count() - iter.clone().count();
+
             if ('0'..='7').contains(&next_c) {
                 let mut digits = format!("{next_c}");
                 if let Some(&next_c) = iter.peek()
@@ -32,7 +34,13 @@ pub fn unescape(input: &str) -> String {
                     digits.push(next_c);
                 }
 
-                s.push(char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap());
+                s.push(
+                    char::from_u32(u32::from_str_radix(&digits, 16).map_err(|_| {
+                        let end = input.chars().count() - iter.clone().count();
+                        (start - 1, end + 1)
+                    })?)
+                    .unwrap(),
+                );
             } else {
                 s.push(match next_c {
                     'a' => 7 as char, // bell
@@ -44,7 +52,11 @@ pub fn unescape(input: &str) -> String {
                     'r' => '\r',
                     '\\' => '\\',
                     '"' => '"',
-                    _ => panic!("unsupported escape: {next_c}"),
+                    '\'' => '\'',
+                    _ => {
+                        let end = input.chars().count() - iter.count();
+                        return Err((start - 1, end + 1));
+                    }
                 });
             }
             continue;
@@ -53,7 +65,7 @@ pub fn unescape(input: &str) -> String {
         s.push(c);
     }
 
-    s
+    Ok(s)
 }
 
 pub fn escape(input: &str) -> String {

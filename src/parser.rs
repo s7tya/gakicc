@@ -148,26 +148,8 @@ impl<'src> Parser<'src> {
     }
 
     pub fn error_at(&self, message: &str) -> ! {
-        let lines = self.source_map.source.split("\n").collect::<Vec<_>>();
-
-        let mut prev_cursor = 0;
-        let mut cursor = 0;
-        let mut line = 0;
-
         let error_span = &self.tokens[self.cursor].span;
-
-        while cursor < error_span.lo {
-            prev_cursor = cursor;
-            cursor += lines[line].len() + 1;
-            line += 1;
-        }
-
-        panic!(
-            "{}\n\x1b[1;31m{:>width$} {message}\x1b[m",
-            lines[line - 1],
-            "^",
-            width = error_span.lo - prev_cursor
-        );
+        self.source_map.error_at(error_span, message)
     }
 
     fn new_var(&mut self, name: &'src str, ctype: CType, is_local: bool) -> Object<'src> {
