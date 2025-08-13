@@ -1,7 +1,8 @@
 /target
 
 tmp*
-/test/*.exe
+/test/**/*.exe
+/test/**/*.s
 log.txt
 
 misc/diary.md

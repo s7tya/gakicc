@@ -19,6 +19,7 @@ test/%.exe: test/%.s
 
 test: $(TESTS)
 	for i in $^; do echo $$i; $(SH) ./$$i || exit 1; echo; done
+	$(GAKICC) -o test/donut/donut.s test/donut/donut.c && $(CC) -static -o test/donut/donut.exe test/donut/donut.s && $(SH) ./test/donut/donut.exe | diff test/donut/snap.txt - 2>&1 > /dev/null && echo "OK"
 	test/driver.sh
 
 clean:
