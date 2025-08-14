@@ -216,12 +216,7 @@ impl<'src> Parser<'src> {
         }
 
         let cursor = self.cursor;
-        let dummy = CType {
-            name: None,
-            size: 0,
-            kind: CTypeKind::Int,
-            align: 0,
-        };
+        let dummy = CType::dummy();
         let ty = self.declarator(dummy).kind;
         self.cursor = cursor;
 
@@ -444,6 +439,19 @@ impl<'src> Parser<'src> {
             ty = CType::pointer_to(ty);
         }
 
+        if self.consume("(") {
+            let start = self.cursor;
+            self.declarator(CType::dummy());
+            self.expect(")");
+            ty = self.type_suffix(ty);
+            let after_suffix = self.cursor;
+            self.cursor = start;
+            ty = self.declarator(ty);
+            self.cursor = after_suffix;
+
+            return ty;
+        }
+
         if self.tokens[self.cursor].kind != TokenKind::Ident {
             self.error_at("expected a variable name");
         }
@@ -459,6 +467,34 @@ impl<'src> Parser<'src> {
         ty.name = name;
 
         ty
+    }
+
+    fn abstract_declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+        while self.consume("*") {
+            ty = CType::pointer_to(ty);
+        }
+
+        if self.consume("(") {
+            let start = self.cursor;
+            self.abstract_declarator(CType::dummy());
+            self.expect(")");
+
+            ty = self.type_suffix(ty);
+            let after_suffix = self.cursor;
+            self.cursor = start;
+
+            ty = self.abstract_declarator(ty);
+            self.cursor = after_suffix;
+
+            return ty;
+        }
+
+        self.type_suffix(ty)
+    }
+
+    fn typename(&mut self) -> CType<'src> {
+        let ty = self.declspec();
+        self.abstract_declarator(ty)
     }
 
     fn declaration(&mut self) -> Node<'src> {
@@ -686,12 +722,6 @@ impl<'src> Parser<'src> {
     }
 
     fn unary(&mut self) -> Node<'src> {
-        if self.consume("sizeof") {
-            let node = self.unary();
-            let typed_node: TypedNode<'_> = node.into();
-            return Node::new(NodeKind::Num(typed_node.ctype.unwrap().size as i32));
-        }
-
         if self.consume("+") {
             return self.unary();
         }
@@ -854,6 +884,34 @@ impl<'src> Parser<'src> {
             let node = self.expr();
             self.expect(")");
             return node;
+        }
+
+        if self.is_equal("sizeof")
+            && self
+                .source_map
+                .span_to_str(&self.tokens[self.cursor + 1].span)
+                == "("
+            && {
+                let cursor = self.cursor;
+                self.cursor += 2;
+                let result = self.is_typename();
+                self.cursor = cursor;
+                result
+            }
+        {
+            self.cursor += 2;
+            let ty = self.typename();
+            self.expect(")");
+
+            // log(&format!("TYPE: {ty:#?}"));
+
+            return Node::new(NodeKind::Num(ty.size as i32));
+        }
+
+        if self.consume("sizeof") {
+            let node = self.unary();
+            let typed_node: TypedNode<'_> = node.into();
+            return Node::new(NodeKind::Num(typed_node.ctype.unwrap().size as i32));
         }
 
         let token = &self.tokens[self.cursor];

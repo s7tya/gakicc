@@ -156,6 +156,10 @@ impl<'src> CType<'src> {
         }
     }
 
+    pub fn dummy() -> CType<'src> {
+        CType::new(CTypeKind::Void, None, 0, 0)
+    }
+
     pub fn int() -> CType<'src> {
         CType::new(CTypeKind::Int, None, 4, 4)
     }
