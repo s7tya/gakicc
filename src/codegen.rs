@@ -152,6 +152,10 @@ impl<'src> Codegen<'src> {
                 self.gen_expr(*lhs);
                 self.gen_expr(*rhs);
             }
+            TypedNodeKind::Member { node, member } => {
+                self.gen_addr(*node);
+                writeln!(self.writer, "  addi a0, a0, {}", member.offset).unwrap();
+            }
             _ => {
                 panic!("{node:?} is not an lvalue");
             }
@@ -164,7 +168,7 @@ impl<'src> Codegen<'src> {
             TypedNodeKind::Num(value) => {
                 writeln!(&mut self.writer, "  li a0, {value}").unwrap();
             }
-            TypedNodeKind::Var(_) => {
+            TypedNodeKind::Var(_) | TypedNodeKind::Member { .. } => {
                 self.gen_addr(node);
                 load(&mut self.writer, &ctype);
             }

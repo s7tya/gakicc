@@ -8,12 +8,12 @@ use crate::{
 pub enum Object<'src> {
     Object {
         name: &'src str,
-        ctype: CType,
+        ctype: CType<'src>,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType,
+        ctype: CType<'src>,
         string: String,
     },
     Function {
@@ -80,6 +80,17 @@ pub enum NodeKind<'src> {
         lhs: Box<Node<'src>>,
         rhs: Box<Node<'src>>,
     },
+    Member {
+        member: Member<'src>,
+        node: Box<Node<'src>>,
+    },
+}
+
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Member<'src> {
+    pub ty: CType<'src>,
+    pub name: &'src str,
+    pub offset: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -152,7 +163,7 @@ impl<'src> Parser<'src> {
         self.source_map.error_at(error_span, message)
     }
 
-    fn new_var(&mut self, name: &'src str, ctype: CType, is_local: bool) -> Object<'src> {
+    fn new_var(&mut self, name: &'src str, ctype: CType<'src>, is_local: bool) -> Object<'src> {
         let obj = Object::Object {
             name,
             ctype,
@@ -188,7 +199,7 @@ impl<'src> Parser<'src> {
         obj
     }
 
-    fn create_param_lvars(&mut self, ctype: CType) {
+    fn create_param_lvars(&mut self, ctype: CType<'src>) {
         if let CTypeKind::Function { params, .. } = ctype.kind {
             for param in params {
                 let name = self.get_ident(param.name.clone().unwrap());
@@ -223,10 +234,13 @@ impl<'src> Parser<'src> {
     }
 
     fn is_typename(&mut self) -> bool {
-        self.is_equal("void") || self.is_equal("int") || self.is_equal("char")
+        self.is_equal("void")
+            || self.is_equal("int")
+            || self.is_equal("char")
+            || self.is_equal("struct")
     }
 
-    pub fn parse(&mut self) -> Vec<Object> {
+    pub fn parse(&mut self) -> Vec<Object<'src>> {
         while !self.at_eof() {
             let basety = self.declspec();
 
@@ -242,7 +256,7 @@ impl<'src> Parser<'src> {
         self.globals.clone()
     }
 
-    fn function(&mut self, basety: CType) -> Option<Object<'src>> {
+    fn function(&mut self, basety: CType<'src>) -> Option<Object<'src>> {
         let ty = self.declarator(basety);
 
         if self.consume(";") {
@@ -264,7 +278,7 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn global_variable(&mut self, basety: CType) {
+    fn global_variable(&mut self, basety: CType<'src>) {
         let mut is_first = true;
 
         while !self.consume(";") {
@@ -369,7 +383,7 @@ impl<'src> Parser<'src> {
         self.source_map.span_to_str(&token.span)
     }
 
-    fn declspec(&mut self) -> CType {
+    fn declspec(&mut self) -> CType<'src> {
         if self.consume("void") {
             return CType::new(CTypeKind::Void, None, 1);
         }
@@ -378,12 +392,18 @@ impl<'src> Parser<'src> {
             return CType::new(CTypeKind::Char, None, 1);
         }
 
-        self.expect("int");
+        if self.consume("int") {
+            return CType::new(CTypeKind::Int, None, 8);
+        }
 
-        CType::new(CTypeKind::Int, None, 8)
+        if self.consume("struct") {
+            return self.struct_decl();
+        }
+
+        self.error_at("typename expected");
     }
 
-    fn func_params(&mut self, ty: CType) -> CType {
+    fn func_params(&mut self, ty: CType<'src>) -> CType<'src> {
         let mut params = vec![];
         let mut is_head = true;
         while !self.consume(")") {
@@ -408,7 +428,7 @@ impl<'src> Parser<'src> {
         )
     }
 
-    fn type_suffix(&mut self, ty: CType) -> CType {
+    fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
         if self.consume("(") {
             return self.func_params(ty);
         }
@@ -423,7 +443,7 @@ impl<'src> Parser<'src> {
         ty
     }
 
-    fn declarator(&mut self, mut ty: CType) -> CType {
+    fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
         while self.consume("*") {
             ty = CType::pointer_to(ty);
         }
@@ -707,20 +727,97 @@ impl<'src> Parser<'src> {
         self.postfix()
     }
 
+    fn struct_members(&mut self) -> Vec<Member<'src>> {
+        let mut members = vec![];
+        let mut offset = 0;
+
+        while !self.consume("}") {
+            let basety = self.declspec();
+            let mut i = 0;
+
+            while !self.consume(";") {
+                if i != 0 {
+                    self.expect(",");
+                }
+
+                let ty = self.declarator(basety.clone());
+                let size = ty.size;
+                let name = self.source_map.span_to_str(&ty.name.clone().unwrap().span);
+                members.push(Member { ty, name, offset });
+
+                offset += size;
+                i += 1;
+            }
+        }
+
+        members
+    }
+
+    fn struct_decl(&mut self) -> CType<'src> {
+        self.expect("{");
+        let members = self.struct_members();
+
+        let size = members.iter().map(|mem| mem.ty.size).sum();
+        CType::new(CTypeKind::Struct { members }, None, size)
+    }
+
+    fn get_struct_member(&mut self, ty: CType<'src>, token: &Token) -> Member<'src> {
+        let raw_token = self.source_map.span_to_str(&token.span);
+
+        if let CType {
+            kind: CTypeKind::Struct { members },
+            ..
+        } = ty
+        {
+            for mem in members {
+                if mem.name == raw_token {
+                    return mem;
+                }
+            }
+        }
+
+        self.error_at("no such member")
+    }
+
+    fn struct_ref(&mut self, lhs: Node<'src>, cursor: usize) -> Node<'src> {
+        let token = &self.tokens[cursor].clone();
+
+        let lhs_type = TypedNode::from(lhs.clone()).ctype.clone().unwrap();
+        if !matches!(lhs_type.kind, CTypeKind::Struct { .. }) {
+            self.error_at("not a struct");
+        }
+
+        let member = self.get_struct_member(lhs_type, token);
+        Node::new(NodeKind::Member {
+            member,
+            node: Box::new(lhs),
+        })
+    }
+
     fn postfix(&mut self) -> Node<'src> {
         let mut node = self.primary();
 
-        while self.consume("[") {
-            let idx = self.expr();
-            self.expect("]");
-            node = Node::new(NodeKind::Deref(Box::new(Node::new(NodeKind::BinOp {
-                op: BinOp::Add,
-                lhs: Box::new(node),
-                rhs: Box::new(idx),
-            }))))
-        }
+        loop {
+            if self.consume("[") {
+                let idx = self.expr();
+                self.expect("]");
 
-        node
+                node = Node::new(NodeKind::Deref(Box::new(Node::new(NodeKind::BinOp {
+                    op: BinOp::Add,
+                    lhs: Box::new(node),
+                    rhs: Box::new(idx),
+                }))));
+                continue;
+            }
+
+            if self.consume(".") {
+                node = self.struct_ref(node, self.cursor);
+                self.cursor += 1;
+                continue;
+            }
+
+            return node;
+        }
     }
 
     fn funcall(&mut self) -> Node<'src> {

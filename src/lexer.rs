@@ -83,7 +83,7 @@ impl<'src> Lexer<'src> {
             }
 
             for keyword in [
-                "return", "if", "else", "for", "while", "int", "sizeof", "char", "void",
+                "return", "if", "else", "for", "while", "int", "sizeof", "char", "void", "struct",
             ] {
                 if let Some(rest) = self.source[self.cursor..].strip_prefix(keyword) {
                     if rest.is_empty() || !is_ident_follow(rest.chars().next().unwrap()) {
@@ -102,7 +102,7 @@ impl<'src> Lexer<'src> {
 
             for punct in [
                 "==", "!=", "<=", ">=", "||", "&&", "+", "-", "*", "/", "{", "}", "(", ")", "<",
-                ">", ";", "=", "&", ",", "[", "]", "%", "!",
+                ">", ";", "=", "&", ",", "[", "]", "%", "!", ".",
             ] {
                 if self.source[self.cursor..].starts_with(punct) {
                     tokens.push(Token {

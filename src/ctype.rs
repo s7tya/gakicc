@@ -1,18 +1,18 @@
 use crate::{
     lexer::Token,
-    parser::{BinOp, Node, NodeKind, Object},
+    parser::{BinOp, Member, Node, NodeKind, Object},
 };
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TypedObject<'src> {
     Object {
         name: &'src str,
-        ctype: CType,
+        ctype: CType<'src>,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType,
+        ctype: CType<'src>,
         string: String,
     },
     Function {
@@ -72,7 +72,7 @@ impl<'src> From<Object<'src>> for TypedObject<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypedNode<'src> {
     pub kind: TypedNodeKind<'src>,
-    pub ctype: Option<CType>,
+    pub ctype: Option<CType<'src>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -104,37 +104,44 @@ pub enum TypedNodeKind<'src> {
         lhs: Box<TypedNode<'src>>,
         rhs: Box<TypedNode<'src>>,
     },
+    Member {
+        member: Member<'src>,
+        node: Box<TypedNode<'src>>,
+    },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum CTypeKind {
+pub enum CTypeKind<'src> {
     Void,
     Int,
     Char,
-    Ptr(Box<CType> /* ポイント先の型 */),
+    Ptr(Box<CType<'src>> /* ポイント先の型 */),
     Function {
-        return_ty: Box<CType>,
-        params: Vec<CType>,
+        return_ty: Box<CType<'src>>,
+        params: Vec<CType<'src>>,
     },
     Array {
-        base: Box<CType>,
+        base: Box<CType<'src>>,
         len: usize,
+    },
+    Struct {
+        members: Vec<Member<'src>>,
     },
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct CType {
-    pub kind: CTypeKind,
+pub struct CType<'src> {
+    pub kind: CTypeKind<'src>,
     pub name: Option<Token>,
     pub size: usize,
 }
 
-impl CType {
-    pub fn new(kind: CTypeKind, name: Option<Token>, size: usize) -> Self {
+impl<'src> CType<'src> {
+    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize) -> Self {
         CType { kind, name, size }
     }
 
-    pub fn pointer_to(base: CType) -> Self {
+    pub fn pointer_to(base: CType<'src>) -> Self {
         Self {
             kind: CTypeKind::Ptr(Box::new(base)),
             name: None,
@@ -143,7 +150,7 @@ impl CType {
     }
 }
 
-pub fn array_of(base: CType, len: usize) -> CType {
+pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
     let size = base.size;
     CType::new(
         CTypeKind::Array {
@@ -156,7 +163,7 @@ pub fn array_of(base: CType, len: usize) -> CType {
 }
 
 impl<'src> From<Node<'src>> for TypedNode<'src> {
-    fn from(node: Node) -> TypedNode {
+    fn from(node: Node<'src>) -> TypedNode<'src> {
         match node.kind {
             NodeKind::Num(value) => TypedNode {
                 kind: TypedNodeKind::Num(value),
@@ -501,6 +508,15 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         then,
                     },
                     ctype: None,
+                }
+            }
+            NodeKind::Member { member, node } => {
+                let ctype = Some(member.ty.clone());
+                let node: Box<TypedNode<'src>> = Box::new((*node).into());
+
+                TypedNode {
+                    kind: TypedNodeKind::Member { member, node },
+                    ctype,
                 }
             }
         }
