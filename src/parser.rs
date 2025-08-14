@@ -787,7 +787,7 @@ impl<'src> Parser<'src> {
         members
     }
 
-    fn struct_decl(&mut self) -> CType<'src> {
+    fn struct_union_decl(&mut self) -> CType<'src> {
         let mut tag = None;
         if self.tokens[self.cursor].kind == TokenKind::Ident {
             let token = &self.tokens[self.cursor];
@@ -798,19 +798,46 @@ impl<'src> Parser<'src> {
         if let Some(tag) = tag
             && !self.is_equal("{")
         {
-            let Some(ty) = self.find_tag(tag) else {
-                self.error_at("unknown struct type");
-            };
-            return ty.clone();
+            if let Some(ty) = self.find_tag(tag) {
+                return ty.clone();
+            }
+
+            let ty = CType::new(CTypeKind::Struct { members: vec![] }, None, 0, 0);
+            self.push_tag(tag, ty.clone());
+            return ty;
         }
 
         self.expect("{");
 
-        let mut members = self.struct_members();
-        let mut align = 1;
-        let mut offset = 0;
+        let members = self.struct_members();
+        let ty = CType::new(CTypeKind::Struct { members }, None, 0, 1);
+        if let Some(tag) = tag {
+            for t in &mut self.tags {
+                if t.name == tag {
+                    t.ty = ty.clone();
+                    return t.ty.clone();
+                }
+            }
 
-        for member in &mut members {
+            self.push_tag(tag, ty.clone());
+        }
+
+        ty
+    }
+
+    fn struct_decl(&mut self) -> CType<'src> {
+        let ty = &mut self.struct_union_decl();
+        if ty.size == 0 {
+            return ty.to_owned();
+        }
+
+        let CTypeKind::Struct { members } = &mut ty.kind else {
+            self.error_at("not a struct");
+        };
+
+        let mut offset = 0;
+        let mut align = 1;
+        for member in members {
             offset = align_to(offset, member.ty.align);
             member.offset = offset;
             offset += member.ty.size;
@@ -819,13 +846,10 @@ impl<'src> Parser<'src> {
                 align = member.ty.align;
             }
         }
-        let size = align_to(offset, align);
-        let ty = CType::new(CTypeKind::Struct { members }, None, size, align);
-        if let Some(tag) = tag {
-            self.push_tag(tag, ty.clone());
-        }
 
-        ty
+        ty.size = align_to(offset, align);
+
+        ty.to_owned()
     }
 
     fn push_tag(&mut self, tag: &'src str, ty: CType<'src>) {
