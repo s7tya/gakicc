@@ -336,7 +336,7 @@ impl<'src> Codegen<'src> {
     }
 }
 
-fn align_to(n: usize, align: usize) -> usize {
+pub fn align_to(n: usize, align: usize) -> usize {
     n.div_ceil(align) * align
 }
 

@@ -134,11 +134,17 @@ pub struct CType<'src> {
     pub kind: CTypeKind<'src>,
     pub name: Option<Token>,
     pub size: usize,
+    pub align: usize,
 }
 
 impl<'src> CType<'src> {
-    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize) -> Self {
-        CType { kind, name, size }
+    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize, align: usize) -> Self {
+        CType {
+            kind,
+            name,
+            size,
+            align,
+        }
     }
 
     pub fn pointer_to(base: CType<'src>) -> Self {
@@ -146,12 +152,14 @@ impl<'src> CType<'src> {
             kind: CTypeKind::Ptr(Box::new(base)),
             name: None,
             size: 8,
+            align: 8,
         }
     }
 }
 
 pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
     let size = base.size;
+    let align = base.align;
     CType::new(
         CTypeKind::Array {
             base: Box::new(base),
@@ -159,6 +167,7 @@ pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
         },
         None,
         size * len,
+        align,
     )
 }
 
@@ -171,6 +180,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     kind: CTypeKind::Int,
                     name: None,
                     size: 8,
+                    align: 8,
                 }),
             },
             NodeKind::Var(object) => match *object {
@@ -216,6 +226,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         kind: CTypeKind::Int,
                         name: None,
                         size: 8,
+                        align: 8,
                     }),
                 }
             }
@@ -268,6 +279,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             kind: CTypeKind::Int,
                             name: None,
                             size: 8,
+                            align: 8,
                         }),
                     },
                     // (int | char) + ptr -> ptr
@@ -276,7 +288,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         Some(CType {
                             kind: CTypeKind::Int | CTypeKind::Char,
                             name: None,
-                            size: 8,
+                            ..
                         }),
                         Some(CType {
                             kind: CTypeKind::Ptr(ctype) | CTypeKind::Array { base: ctype, .. },
@@ -298,6 +310,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 kind: CTypeKind::Int,
                                 name: None,
                                 size: 8,
+                                align: 8,
                             }),
                         };
 
@@ -338,6 +351,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 name: None,
                                 // TODO: リテラルから変える？
                                 size: 8,
+                                align: 8,
                             }),
                         };
 
@@ -377,6 +391,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 name: None,
                                 // TODO: リテラルから変える？
                                 size: 8,
+                                align: 8,
                             }),
                         };
 
@@ -395,6 +410,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 kind: CTypeKind::Int,
                                 name: None,
                                 size: 8,
+                                align: 8,
                             }),
                         }
                     }
@@ -415,6 +431,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     kind: CTypeKind::Int,
                     name: None,
                     size: 8,
+                    align: 8,
                 }),
             },
             NodeKind::Addr(node) => {

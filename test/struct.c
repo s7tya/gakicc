@@ -191,6 +191,22 @@ int t21() {
   sizeof(x);
 }
 
+int t22() {
+  struct {
+    char a;
+    int b;
+  } x;
+  sizeof(x);
+}
+
+int t23() {
+  struct {
+    int a;
+    char b;
+  } x;
+  sizeof(x);
+}
+
 int main() {
   ASSERT(1, t1());
   ASSERT(2, t2());
@@ -211,8 +227,9 @@ int main() {
   ASSERT(32, t17());
   ASSERT(48, t18());
   ASSERT(2, t19());
-  ASSERT(9, t20());
   ASSERT(0, t21());
+  ASSERT(16, t22());
+  ASSERT(16, t23());
 
   printf("OK\n");
   return 0;

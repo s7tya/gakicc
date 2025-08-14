@@ -1,5 +1,6 @@
 use crate::{
     SourceMap,
+    codegen::align_to,
     ctype::{CType, CTypeKind, TypedNode, array_of},
     lexer::{Token, TokenKind},
 };
@@ -188,6 +189,7 @@ impl<'src> Parser<'src> {
                     kind: CTypeKind::Char,
                     size: 1,
                     name: None,
+                    align: 1,
                 },
                 string.len() + 1,
             ),
@@ -226,6 +228,7 @@ impl<'src> Parser<'src> {
             name: None,
             size: 0,
             kind: CTypeKind::Int,
+            align: 0,
         };
         let ty = self.declarator(dummy).kind;
         self.cursor = cursor;
@@ -385,15 +388,15 @@ impl<'src> Parser<'src> {
 
     fn declspec(&mut self) -> CType<'src> {
         if self.consume("void") {
-            return CType::new(CTypeKind::Void, None, 1);
+            return CType::new(CTypeKind::Void, None, 1, 1);
         }
 
         if self.consume("char") {
-            return CType::new(CTypeKind::Char, None, 1);
+            return CType::new(CTypeKind::Char, None, 1, 1);
         }
 
         if self.consume("int") {
-            return CType::new(CTypeKind::Int, None, 8);
+            return CType::new(CTypeKind::Int, None, 8, 8);
         }
 
         if self.consume("struct") {
@@ -422,8 +425,9 @@ impl<'src> Parser<'src> {
                 return_ty: Box::new(ty),
                 params,
             },
-            // TODO: ここの name と size がこれでいいかわからない
+            // TODO: ここの name と size, align がこれでいいかわからない
             None,
+            0,
             0,
         )
     }
@@ -729,7 +733,6 @@ impl<'src> Parser<'src> {
 
     fn struct_members(&mut self) -> Vec<Member<'src>> {
         let mut members = vec![];
-        let mut offset = 0;
 
         while !self.consume("}") {
             let basety = self.declspec();
@@ -741,11 +744,13 @@ impl<'src> Parser<'src> {
                 }
 
                 let ty = self.declarator(basety.clone());
-                let size = ty.size;
                 let name = self.source_map.span_to_str(&ty.name.clone().unwrap().span);
-                members.push(Member { ty, name, offset });
+                members.push(Member {
+                    ty,
+                    name,
+                    offset: 0, // struct_decl で更新
+                });
 
-                offset += size;
                 i += 1;
             }
         }
@@ -755,10 +760,23 @@ impl<'src> Parser<'src> {
 
     fn struct_decl(&mut self) -> CType<'src> {
         self.expect("{");
-        let members = self.struct_members();
 
-        let size = members.iter().map(|mem| mem.ty.size).sum();
-        CType::new(CTypeKind::Struct { members }, None, size)
+        let mut members = self.struct_members();
+        let mut align = 1;
+        let mut offset = 0;
+
+        for member in &mut members {
+            offset = align_to(offset, member.ty.align);
+            member.offset = offset;
+            offset += member.ty.size;
+
+            if align < member.ty.align {
+                align = member.ty.align;
+            }
+        }
+        let size = align_to(offset, align);
+
+        CType::new(CTypeKind::Struct { members }, None, size, align)
     }
 
     fn get_struct_member(&mut self, ty: CType<'src>, token: &Token) -> Member<'src> {
