@@ -235,6 +235,7 @@ impl<'src> Parser<'src> {
             || self.is_equal("int")
             || self.is_equal("char")
             || self.is_equal("struct")
+            || self.is_equal("const")
     }
 
     pub fn parse(&mut self) -> Vec<Object<'src>> {
@@ -381,20 +382,26 @@ impl<'src> Parser<'src> {
     }
 
     fn declspec(&mut self) -> CType<'src> {
-        if self.consume("void") {
-            return CType::new(CTypeKind::Void, None, 1, 1);
-        }
+        while self.is_typename() {
+            if self.consume("const") {
+                continue;
+            }
 
-        if self.consume("char") {
-            return CType::char();
-        }
+            if self.consume("void") {
+                return CType::new(CTypeKind::Void, None, 1, 1);
+            }
 
-        if self.consume("int") {
-            return CType::int();
-        }
+            if self.consume("char") {
+                return CType::char();
+            }
 
-        if self.consume("struct") {
-            return self.struct_decl();
+            if self.consume("int") {
+                return CType::int();
+            }
+
+            if self.consume("struct") {
+                return self.struct_decl();
+            }
         }
 
         self.error_at("typename expected");
@@ -442,6 +449,21 @@ impl<'src> Parser<'src> {
     }
 
     fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+        if self.consume("void") {
+            return CType::new(CTypeKind::Void, None, 1, 1);
+        }
+
+        if self.consume("char") {
+            return CType::char();
+        }
+
+        if self.consume("int") {
+            return CType::int();
+        }
+
+        if self.consume("struct") {
+            return self.struct_decl();
+        }
         while self.consume("*") {
             ty = CType::pointer_to(ty);
         }
