@@ -183,17 +183,17 @@ int main() {
   ASSERT(3, t7());
   ASSERT(8, t8());
 
-  ASSERT(8, t9());
-  ASSERT(8, t10());
+  ASSERT(4, t9());
+  ASSERT(4, t10());
   ASSERT(8, t11());
-  ASSERT(32, t12());
-  ASSERT(96, t13());
-  ASSERT(32, t14());
-  ASSERT(8, t15());
-  ASSERT(9, t16());
-  ASSERT(9, t17());
-  ASSERT(8, t18());
-  ASSERT(8, t19());
+  ASSERT(16, t12());
+  ASSERT(48, t13());
+  ASSERT(16, t14());
+  ASSERT(4, t15());
+  ASSERT(5, t16());
+  ASSERT(5, t17());
+  ASSERT(4, t18());
+  ASSERT(4, t19());
   ASSERT(1, t20());
 
   ASSERT(0, g1);
@@ -203,8 +203,8 @@ int main() {
   ASSERT(2, t24());
   ASSERT(3, t25());
 
-  ASSERT(8, sizeof(g1));
-  ASSERT(32, sizeof(g2));
+  ASSERT(4, sizeof(g1));
+  ASSERT(16, sizeof(g2));
 
   ASSERT(1, t26());
   ASSERT(1, t27());

@@ -155,6 +155,14 @@ impl<'src> CType<'src> {
             align: 8,
         }
     }
+
+    pub fn int() -> CType<'src> {
+        CType::new(CTypeKind::Int, None, 4, 4)
+    }
+
+    pub fn char() -> CType<'src> {
+        CType::new(CTypeKind::Char, None, 1, 1)
+    }
 }
 
 pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
@@ -176,12 +184,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
         match node.kind {
             NodeKind::Num(value) => TypedNode {
                 kind: TypedNodeKind::Num(value),
-                ctype: Some(CType {
-                    kind: CTypeKind::Int,
-                    name: None,
-                    size: 8,
-                    align: 8,
-                }),
+                ctype: Some(CType::int()),
             },
             NodeKind::Var(object) => match *object {
                 Object::Object {
@@ -222,12 +225,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         lhs: Box::new(lhs),
                         rhs: Box::new(rhs),
                     },
-                    ctype: Some(CType {
-                        kind: CTypeKind::Int,
-                        name: None,
-                        size: 8,
-                        align: 8,
-                    }),
+                    ctype: Some(CType::int()),
                 }
             }
             NodeKind::BinOp {
@@ -275,12 +273,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             lhs: Box::new(lhs),
                             rhs: Box::new(rhs),
                         },
-                        ctype: Some(CType {
-                            kind: CTypeKind::Int,
-                            name: None,
-                            size: 8,
-                            align: 8,
-                        }),
+                        ctype: Some(CType::int()),
                     },
                     // (int | char) + ptr -> ptr
                     (
@@ -306,12 +299,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                     .into(),
                                 ),
                             },
-                            ctype: Some(CType {
-                                kind: CTypeKind::Int,
-                                name: None,
-                                size: 8,
-                                align: 8,
-                            }),
+                            ctype: Some(CType::int()),
                         };
 
                         TypedNode {
@@ -346,13 +334,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                     .into(),
                                 ),
                             },
-                            ctype: Some(CType {
-                                kind: CTypeKind::Int,
-                                name: None,
-                                // TODO: リテラルから変える？
-                                size: 8,
-                                align: 8,
-                            }),
+                            ctype: Some(CType::int()),
                         };
 
                         TypedNode {
@@ -386,13 +368,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(lhs),
                                 rhs: Box::new(rhs),
                             },
-                            ctype: Some(CType {
-                                kind: CTypeKind::Int,
-                                name: None,
-                                // TODO: リテラルから変える？
-                                size: 8,
-                                align: 8,
-                            }),
+                            ctype: Some(CType::int()),
                         };
 
                         TypedNode {
@@ -406,12 +382,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                     .into(),
                                 ),
                             },
-                            ctype: Some(CType {
-                                kind: CTypeKind::Int,
-                                name: None,
-                                size: 8,
-                                align: 8,
-                            }),
+                            ctype: Some(CType::int()),
                         }
                     }
 
@@ -427,12 +398,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     name,
                     args: args.into_iter().map(|arg| arg.into()).collect::<Vec<_>>(),
                 },
-                ctype: Some(CType {
-                    kind: CTypeKind::Int,
-                    name: None,
-                    size: 8,
-                    align: 8,
-                }),
+                ctype: Some(CType::int()),
             },
             NodeKind::Addr(node) => {
                 let typed_node: TypedNode<'_> = (*node).into();

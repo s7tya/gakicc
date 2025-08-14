@@ -96,11 +96,18 @@ impl<'src> Codegen<'src> {
                         ctype: CType { size, .. },
                         ..
                     } = param
-                        && *size == 1
                     {
-                        writeln!(&mut self.writer, "  sb {reg}, {offset}(fp)").unwrap();
-                    } else {
-                        writeln!(&mut self.writer, "  sd {reg}, {offset}(fp)").unwrap();
+                        match *size {
+                            1 => {
+                                writeln!(&mut self.writer, "  sb {reg}, {offset}(fp)").unwrap();
+                            }
+                            4 => {
+                                writeln!(&mut self.writer, "  sw {reg}, {offset}(fp)").unwrap();
+                            }
+                            _ => {
+                                writeln!(&mut self.writer, "  sd {reg}, {offset}(fp)").unwrap();
+                            }
+                        }
                     }
                 }
 
@@ -359,6 +366,8 @@ fn load(writer: &mut Box<dyn Write>, ty: &CType) {
 
     if ty.size == 1 {
         writeln!(writer, "  lb a0, 0(a0)").unwrap();
+    } else if ty.size == 4 {
+        writeln!(writer, "  lw a0, 0(a0)").unwrap();
     } else {
         writeln!(writer, "  ld a0, 0(a0)").unwrap();
     }
@@ -369,6 +378,8 @@ fn store(writer: &mut Box<dyn Write>, ty: &CType) {
 
     if ty.size == 1 {
         writeln!(writer, "  sb a0, 0(a1)").unwrap();
+    } else if ty.size == 4 {
+        writeln!(writer, "  sw a0, 0(a1)").unwrap();
     } else {
         writeln!(writer, "  sd a0, 0(a1)").unwrap();
     }

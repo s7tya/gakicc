@@ -184,15 +184,7 @@ impl<'src> Parser<'src> {
     fn new_string_literal(&mut self, string: String) -> Object<'src> {
         let obj = Object::StringLiteral {
             id: self.anon_gvar_count,
-            ctype: array_of(
-                CType {
-                    kind: CTypeKind::Char,
-                    size: 1,
-                    name: None,
-                    align: 1,
-                },
-                string.len() + 1,
-            ),
+            ctype: array_of(CType::char(), string.len() + 1),
             string,
         };
         self.anon_gvar_count += 1;
@@ -392,11 +384,11 @@ impl<'src> Parser<'src> {
         }
 
         if self.consume("char") {
-            return CType::new(CTypeKind::Char, None, 1, 1);
+            return CType::char();
         }
 
         if self.consume("int") {
-            return CType::new(CTypeKind::Int, None, 8, 8);
+            return CType::int();
         }
 
         if self.consume("struct") {

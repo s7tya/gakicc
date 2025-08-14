@@ -220,16 +220,16 @@ int main() {
   ASSERT(6, t10());
   ASSERT(7, t11());
   ASSERT(6, t12());
-  ASSERT(8, t13());
-  ASSERT(16, t14());
-  ASSERT(16, t15());
-  ASSERT(24, t16());
-  ASSERT(32, t17());
-  ASSERT(48, t18());
+  ASSERT(4, t13());
+  ASSERT(8, t14());
+  ASSERT(8, t15());
+  ASSERT(12, t16());
+  ASSERT(16, t17());
+  ASSERT(24, t18());
   ASSERT(2, t19());
   ASSERT(0, t21());
-  ASSERT(16, t22());
-  ASSERT(16, t23());
+  ASSERT(8, t22());
+  ASSERT(8, t23());
 
   printf("OK\n");
   return 0;
