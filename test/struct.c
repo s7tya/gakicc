@@ -207,6 +207,47 @@ int t23() {
   sizeof(x);
 }
 
+int t24() {
+  struct t {
+    int a;
+    int b;
+  } x;
+  struct t y;
+  sizeof(y);
+}
+
+int t25() {
+  struct t {
+    int a;
+    int b;
+  };
+  struct t y;
+  sizeof(y);
+}
+
+// int t26() {
+//   struct t {
+//     char a[2];
+//   };
+//   {
+//     struct t {
+//       char a[4];
+//     };
+//   }
+//   struct t y;
+//   sizeof(y);
+// }
+
+int t27() {
+  struct t {
+    int x;
+  };
+  int t = 1;
+  struct t y;
+  y.x = 2;
+  t + y.x;
+}
+
 int main() {
   ASSERT(1, t1());
   ASSERT(2, t2());
@@ -230,6 +271,11 @@ int main() {
   ASSERT(0, t21());
   ASSERT(8, t22());
   ASSERT(8, t23());
+
+  ASSERT(8, t24());
+  ASSERT(8, t25());
+  // ASSERT(2, t26()); // TODO: tag scope
+  ASSERT(3, t27());
 
   printf("OK\n");
   return 0;

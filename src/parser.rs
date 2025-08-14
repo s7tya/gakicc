@@ -105,12 +105,18 @@ impl<'src> Node<'src> {
     }
 }
 
+pub struct Tag<'src> {
+    name: &'src str,
+    ty: CType<'src>,
+}
+
 pub struct Parser<'src> {
     source_map: &'src SourceMap<'src>,
     tokens: Vec<Token>,
     cursor: usize,
     locals: Vec<Object<'src>>,
     pub globals: Vec<Object<'src>>,
+    tags: Vec<Tag<'src>>,
     anon_gvar_count: usize,
 }
 
@@ -122,6 +128,7 @@ impl<'src> Parser<'src> {
             cursor: 0,
             locals: vec![],
             globals: vec![],
+            tags: vec![],
             anon_gvar_count: 0,
         }
     }
@@ -781,6 +788,22 @@ impl<'src> Parser<'src> {
     }
 
     fn struct_decl(&mut self) -> CType<'src> {
+        let mut tag = None;
+        if self.tokens[self.cursor].kind == TokenKind::Ident {
+            let token = &self.tokens[self.cursor];
+            self.cursor += 1;
+            tag = Some(self.source_map.span_to_str(&token.span));
+        }
+
+        if let Some(tag) = tag
+            && !self.is_equal("{")
+        {
+            let Some(ty) = self.find_tag(tag) else {
+                self.error_at("unknown struct type");
+            };
+            return ty.clone();
+        }
+
         self.expect("{");
 
         let mut members = self.struct_members();
@@ -797,8 +820,24 @@ impl<'src> Parser<'src> {
             }
         }
         let size = align_to(offset, align);
+        let ty = CType::new(CTypeKind::Struct { members }, None, size, align);
+        if let Some(tag) = tag {
+            self.push_tag(tag, ty.clone());
+        }
 
-        CType::new(CTypeKind::Struct { members }, None, size, align)
+        ty
+    }
+
+    fn push_tag(&mut self, tag: &'src str, ty: CType<'src>) {
+        self.tags.push(Tag { name: tag, ty });
+    }
+
+    fn find_tag(&self, tag: &str) -> Option<&CType<'src>> {
+        self.tags
+            .iter()
+            .rev()
+            .find(|t| t.name == tag)
+            .map(|tag| &tag.ty)
     }
 
     fn get_struct_member(&mut self, ty: CType<'src>, token: &Token) -> Member<'src> {
