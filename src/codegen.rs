@@ -209,6 +209,38 @@ impl<'src> Codegen<'src> {
                 self.gen_expr(*rhs);
                 store(&mut self.writer, &node.ctype.unwrap());
             }
+            TypedNodeKind::BinOp {
+                op: BinOp::LogOr,
+                lhs,
+                rhs,
+            } => {
+                self.count += 1;
+                let id = self.count;
+                self.gen_expr(*lhs);
+                writeln!(&mut self.writer, "  bne a0, zero, .L.or.true.{id}").unwrap();
+                self.gen_expr(*rhs);
+                writeln!(&mut self.writer, "  snez a0, a0").unwrap();
+                writeln!(&mut self.writer, "  j .L.or.end.{id}").unwrap();
+                writeln!(&mut self.writer, ".L.or.true.{id}:").unwrap();
+                writeln!(&mut self.writer, "  li a0, 1").unwrap();
+                writeln!(&mut self.writer, ".L.or.end.{id}:").unwrap();
+            }
+            TypedNodeKind::BinOp {
+                op: BinOp::LogAnd,
+                lhs,
+                rhs,
+            } => {
+                self.count += 1;
+                let id = self.count;
+                self.gen_expr(*lhs);
+                writeln!(&mut self.writer, "  beq a0, zero, .L.and.false.{id}").unwrap();
+                self.gen_expr(*rhs);
+                writeln!(&mut self.writer, "  snez a0, a0").unwrap();
+                writeln!(&mut self.writer, "  j .L.and.end.{id}").unwrap();
+                writeln!(&mut self.writer, ".L.and.false.{id}:").unwrap();
+                writeln!(&mut self.writer, "  li a0, 0").unwrap();
+                writeln!(&mut self.writer, ".L.and.end.{id}:").unwrap();
+            }
             TypedNodeKind::BinOp { op, lhs, rhs } => {
                 self.gen_expr(*lhs.clone());
                 push(&mut self.writer, "a0");
@@ -259,20 +291,6 @@ impl<'src> Codegen<'src> {
                     }
                     BinOp::Comma => {
                         writeln!(&mut self.writer, "  mv a0, t1").unwrap();
-                    }
-                    BinOp::LogOr => {
-                        self.count += 1;
-                        writeln!(&mut self.writer, "  li a0, 1").unwrap();
-                        writeln!(&mut self.writer, "  bne t0, zero, .L.{}", self.count).unwrap();
-                        writeln!(&mut self.writer, "  snez a0, t1").unwrap();
-                        writeln!(&mut self.writer, ".L.{}:", self.count).unwrap();
-                    }
-                    BinOp::LogAnd => {
-                        self.count += 1;
-                        writeln!(&mut self.writer, "  li a0, 0").unwrap();
-                        writeln!(&mut self.writer, "  beq t0, zero, .L.{}", self.count).unwrap();
-                        writeln!(&mut self.writer, "  snez a0, t1").unwrap();
-                        writeln!(&mut self.writer, ".L.{}:", self.count).unwrap();
                     }
                     _ => unreachable!(),
                 }
