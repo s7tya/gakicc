@@ -824,7 +824,15 @@ impl<'src> Parser<'src> {
                 return ty.clone();
             }
 
-            let ty = CType::new(CTypeKind::Struct { members: vec![] }, None, 0, 0);
+            let ty = CType::new(
+                CTypeKind::Struct {
+                    members: vec![],
+                    is_incomplete: true,
+                },
+                None,
+                0,
+                0,
+            );
             self.push_tag(tag, ty.clone());
             return ty;
         }
@@ -832,7 +840,15 @@ impl<'src> Parser<'src> {
         self.expect("{");
 
         let members = self.struct_members();
-        let ty = CType::new(CTypeKind::Struct { members }, None, 0, 1);
+        let ty = CType::new(
+            CTypeKind::Struct {
+                members,
+                is_incomplete: false,
+            },
+            None,
+            0,
+            1,
+        );
         if let Some(tag) = tag {
             for t in &mut self.tags {
                 if t.name == tag {
@@ -849,13 +865,17 @@ impl<'src> Parser<'src> {
 
     fn struct_decl(&mut self) -> CType<'src> {
         let ty = &mut self.struct_union_decl();
-        if ty.size == 0 {
-            return ty.to_owned();
-        }
-
-        let CTypeKind::Struct { members } = &mut ty.kind else {
+        let CTypeKind::Struct {
+            members,
+            is_incomplete,
+        } = &mut ty.kind
+        else {
             self.error_at("not a struct");
         };
+
+        if *is_incomplete {
+            return ty.to_owned();
+        }
 
         let mut offset = 0;
         let mut align = 1;
@@ -890,7 +910,7 @@ impl<'src> Parser<'src> {
         let raw_token = self.source_map.span_to_str(&token.span);
 
         if let CType {
-            kind: CTypeKind::Struct { members },
+            kind: CTypeKind::Struct { members, .. },
             ..
         } = ty
         {

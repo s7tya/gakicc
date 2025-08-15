@@ -126,6 +126,7 @@ pub enum CTypeKind<'src> {
     },
     Struct {
         members: Vec<Member<'src>>,
+        is_incomplete: bool,
     },
 }
 
