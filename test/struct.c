@@ -249,19 +249,19 @@ int t27() {
 }
 
 int t28() {
-  struct t {
+  struct u {
     char a;
   } x;
-  struct t *y = &x;
+  struct u *y = &x;
   x.a = 3;
   y->a;
 }
 
 int t29() {
-  struct t {
+  struct v {
     char a;
   } x;
-  struct t *y = &x;
+  struct v *y = &x;
   y->a = 3;
   x.a;
 }
@@ -299,5 +299,6 @@ int main() {
   ASSERT(3, t29());
 
   printf("OK\n");
+
   return 0;
 }

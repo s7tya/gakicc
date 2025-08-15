@@ -1,18 +1,22 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::{
     lexer::Token,
     parser::{BinOp, Member, Node, NodeKind, Object},
 };
 
+pub type CTypeRef<'a> = Rc<RefCell<CType<'a>>>;
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TypedObject<'src> {
     Object {
         name: &'src str,
-        ctype: CType<'src>,
+        ctype: CTypeRef<'src>,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType<'src>,
+        ctype: CTypeRef<'src>,
         string: String,
     },
     Function {
@@ -72,7 +76,7 @@ impl<'src> From<Object<'src>> for TypedObject<'src> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TypedNode<'src> {
     pub kind: TypedNodeKind<'src>,
-    pub ctype: Option<CType<'src>>,
+    pub ctype: Option<CTypeRef<'src>>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -115,13 +119,13 @@ pub enum CTypeKind<'src> {
     Void,
     Int,
     Char,
-    Ptr(Box<CType<'src>> /* ポイント先の型 */),
+    Ptr(Box<CTypeRef<'src>> /* ポイント先の型 */),
     Function {
-        return_ty: Box<CType<'src>>,
-        params: Vec<CType<'src>>,
+        return_ty: Box<CTypeRef<'src>>,
+        params: Vec<CTypeRef<'src>>,
     },
     Array {
-        base: Box<CType<'src>>,
+        base: Box<CTypeRef<'src>>,
         len: usize,
     },
     Struct {
@@ -138,41 +142,47 @@ pub struct CType<'src> {
     pub align: usize,
 }
 
+impl<'src> From<CType<'src>> for CTypeRef<'src> {
+    fn from(value: CType<'src>) -> Self {
+        Rc::new(RefCell::new(value))
+    }
+}
+
 impl<'src> CType<'src> {
-    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize, align: usize) -> Self {
+    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize, align: usize) -> CTypeRef<'src> {
         CType {
             kind,
             name,
             size,
             align,
-        }
+        }.into()
     }
 
-    pub fn pointer_to(base: CType<'src>) -> Self {
+    pub fn pointer_to(base: CTypeRef<'src>) -> CTypeRef<'src> {
         Self {
             kind: CTypeKind::Ptr(Box::new(base)),
             name: None,
             size: 8,
             align: 8,
-        }
+        }.into()
     }
 
-    pub fn dummy() -> CType<'src> {
+    pub fn dummy() -> CTypeRef<'src> {
         CType::new(CTypeKind::Void, None, 0, 0)
     }
 
-    pub fn int() -> CType<'src> {
+    pub fn int() -> CTypeRef<'src> {
         CType::new(CTypeKind::Int, None, 4, 4)
     }
 
-    pub fn char() -> CType<'src> {
+    pub fn char() -> CTypeRef<'src> {
         CType::new(CTypeKind::Char, None, 1, 1)
     }
 }
 
-pub fn array_of<'src>(base: CType<'src>, len: usize) -> CType<'src> {
-    let size = base.size;
-    let align = base.align;
+pub fn array_of<'src>(base: CTypeRef<'src>, len: usize) -> CTypeRef<'src> {
+    let size = base.borrow().size;
+    let align = base.borrow().align;
     CType::new(
         CTypeKind::Array {
             base: Box::new(base),
@@ -199,7 +209,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 } => TypedNode {
                     kind: TypedNodeKind::Var(Box::new(TypedObject::Object {
                         name,
-                        ctype: ctype.clone(),
+                        ctype: Rc::clone(&ctype),
                         is_local,
                     })),
                     ctype: Some(ctype),
@@ -207,7 +217,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 Object::StringLiteral { id, ctype, string } => TypedNode {
                     kind: TypedNodeKind::Var(Box::new(TypedObject::StringLiteral {
                         id,
-                        ctype: ctype.clone(),
+                        ctype: Rc::clone(&ctype),
                         string,
                     })),
                     ctype: Some(ctype),
@@ -241,7 +251,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 let lhs: TypedNode<'_> = (*lhs).into();
                 let rhs: TypedNode<'_> = (*rhs).into();
 
-                if let CTypeKind::Array { .. } = lhs.ctype.clone().unwrap().kind {
+                if let CTypeKind::Array { .. } = lhs.ctype.clone().unwrap().borrow().kind {
                     panic!("not a lvalue");
                 }
 
@@ -260,7 +270,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 let lhs: TypedNode<'_> = (*lhs).into();
                 let rhs: TypedNode<'_> = (*rhs).into();
 
-                match (&op, lhs.ctype.as_ref(), rhs.ctype.as_ref()) {
+                match (&op, lhs.ctype.as_ref().map(|ty| ty.borrow().clone()), rhs.ctype.as_ref().map(|ty| ty.borrow().clone())) {
                     // (int | char) _ (int | char) -> int
                     (
                         _,
@@ -298,7 +308,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(lhs),
                                 rhs: Box::new(
                                     (Node {
-                                        kind: NodeKind::Num(ctype.size as i32),
+                                        kind: NodeKind::Num(ctype.borrow().size as i32),
                                     })
                                     .into(),
                                 ),
@@ -312,7 +322,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(lhs),
                                 rhs: Box::new(rhs.clone()),
                             },
-                            ctype: Some(CType::pointer_to((**ctype).clone())),
+                            ctype: Some(CType::pointer_to(Rc::clone(&*ctype))),
                         }
                     }
                     // ptr + (int | char), ptr - (int | char)
@@ -333,7 +343,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(rhs),
                                 rhs: Box::new(
                                     (Node {
-                                        kind: NodeKind::Num(ctype.size as i32),
+                                        kind: NodeKind::Num(ctype.borrow().size as i32),
                                     })
                                     .into(),
                                 ),
@@ -347,7 +357,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(lhs.clone()),
                                 rhs: Box::new(rhs),
                             },
-                            ctype: Some(CType::pointer_to((**ctype).clone())),
+                            ctype: Some(CType::pointer_to(Rc::clone(&ctype))),
                         }
                     }
                     // ptr - ptr
@@ -381,7 +391,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                                 lhs: Box::new(typed_node),
                                 rhs: Box::new(
                                     (Node {
-                                        kind: NodeKind::Num(lhs_basety.size as i32),
+                                        kind: NodeKind::Num(lhs_basety.borrow().size as i32),
                                     })
                                     .into(),
                                 ),
@@ -395,7 +405,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             lhs: Box::new(lhs),
                             rhs: Box::new(rhs.clone()),
                         },
-                        ctype: rhs_ty.cloned(),
+                        ctype: rhs_ty.map(|ty| ty.clone().into()),
                     },
 
                     // else
@@ -414,16 +424,16 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
             },
             NodeKind::Addr(node) => {
                 let typed_node: TypedNode<'_> = (*node).into();
-                let ctype = match (&typed_node.ctype, &typed_node.kind) {
+                let ctype = match (typed_node.ctype.as_ref().map(|ty| ty.borrow().clone()), &typed_node.kind) {
                     (
                         Some(CType {
                             kind: CTypeKind::Array { base, .. },
                             ..
                         }),
                         _,
-                    ) => CType::pointer_to((**base).clone()),
+                    ) => CType::pointer_to(Rc::clone(&base)),
                     (Some(ty), TypedNodeKind::Var { .. } | TypedNodeKind::Deref(_)) => {
-                        CType::pointer_to(ty.clone())
+                        CType::pointer_to(ty.clone().into())
                     }
                     _ => panic!(
                         "invalid operand for &: \n{:#?}\n\n{:#?}",
@@ -439,9 +449,9 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
             NodeKind::Deref(node) => {
                 let typed_node: TypedNode<'_> = (*node).into();
                 if let CTypeKind::Array { base, .. } | CTypeKind::Ptr(base) =
-                    &typed_node.ctype.clone().unwrap().kind
+                    &typed_node.ctype.as_ref().map(|ty| ty.borrow().kind.clone()).unwrap()
                 {
-                    if base.kind == CTypeKind::Void {
+                    if base.borrow().kind == CTypeKind::Void {
                         panic!("invalid pointer dereference");
                     }
 

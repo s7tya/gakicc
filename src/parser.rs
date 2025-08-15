@@ -1,7 +1,9 @@
+use std::rc::Rc;
+
 use crate::{
     SourceMap,
     codegen::align_to,
-    ctype::{CType, CTypeKind, TypedNode, array_of},
+    ctype::{CType, CTypeKind, CTypeRef, TypedNode, array_of},
     lexer::{Token, TokenKind},
 };
 
@@ -9,12 +11,12 @@ use crate::{
 pub enum Object<'src> {
     Object {
         name: &'src str,
-        ctype: CType<'src>,
+        ctype: CTypeRef<'src>,
         is_local: bool,
     },
     StringLiteral {
         id: usize,
-        ctype: CType<'src>,
+        ctype: CTypeRef<'src>,
         string: String,
     },
     Function {
@@ -89,7 +91,7 @@ pub enum NodeKind<'src> {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Member<'src> {
-    pub ty: CType<'src>,
+    pub ty: CTypeRef<'src>,
     pub name: &'src str,
     pub offset: usize,
 }
@@ -107,7 +109,7 @@ impl<'src> Node<'src> {
 
 pub struct Tag<'src> {
     name: &'src str,
-    ty: CType<'src>,
+    ty: CTypeRef<'src>,
 }
 
 pub struct Parser<'src> {
@@ -171,7 +173,7 @@ impl<'src> Parser<'src> {
         self.source_map.error_at(error_span, message)
     }
 
-    fn new_var(&mut self, name: &'src str, ctype: CType<'src>, is_local: bool) -> Object<'src> {
+    fn new_var(&mut self, name: &'src str, ctype: CTypeRef<'src>, is_local: bool) -> Object<'src> {
         let obj = Object::Object {
             name,
             ctype,
@@ -200,11 +202,11 @@ impl<'src> Parser<'src> {
         obj
     }
 
-    fn create_param_lvars(&mut self, ctype: CType<'src>) {
-        if let CTypeKind::Function { params, .. } = ctype.kind {
+    fn create_param_lvars(&mut self, ctype: CTypeRef<'src>) {
+        if let CTypeKind::Function { params, .. } = &ctype.borrow().kind {
             for param in params {
-                let name = self.get_ident(param.name.clone().unwrap());
-                self.new_var(name, param, true);
+                let name = self.get_ident(param.borrow().name.clone().unwrap());
+                self.new_var(name, param.to_owned(), true);
             }
         }
     }
@@ -224,7 +226,8 @@ impl<'src> Parser<'src> {
 
         let cursor = self.cursor;
         let dummy = CType::dummy();
-        let ty = self.declarator(dummy).kind;
+        let decl = self.declarator(dummy);
+        let ty = &decl.borrow().kind;
         self.cursor = cursor;
 
         matches!(ty, CTypeKind::Function { .. })
@@ -254,7 +257,7 @@ impl<'src> Parser<'src> {
         self.globals.clone()
     }
 
-    fn function(&mut self, basety: CType<'src>) -> Option<Object<'src>> {
+    fn function(&mut self, basety: CTypeRef<'src>) -> Option<Object<'src>> {
         let ty = self.declarator(basety);
 
         if self.consume(";") {
@@ -263,7 +266,7 @@ impl<'src> Parser<'src> {
 
         self.locals = vec![];
 
-        let name = self.get_ident(ty.name.clone().unwrap());
+        let name = self.get_ident(ty.borrow().name.clone().unwrap());
         self.create_param_lvars(ty);
         let params = self.locals.clone();
         self.expect("{");
@@ -276,7 +279,7 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn global_variable(&mut self, basety: CType<'src>) {
+    fn global_variable(&mut self, basety: CTypeRef<'src>) {
         let mut is_first = true;
 
         while !self.consume(";") {
@@ -285,12 +288,9 @@ impl<'src> Parser<'src> {
             }
             is_first = false;
 
-            let ty = self.declarator(basety.clone());
-            self.new_var(
-                self.source_map.span_to_str(&ty.name.clone().unwrap().span),
-                ty,
-                false,
-            );
+            let ty = self.declarator(Rc::clone(&basety));
+            let span = &ty.borrow().name.clone().unwrap().span;
+            self.new_var(self.source_map.span_to_str(span), ty, false);
         }
     }
 
@@ -381,7 +381,7 @@ impl<'src> Parser<'src> {
         self.source_map.span_to_str(&token.span)
     }
 
-    fn declspec(&mut self) -> CType<'src> {
+    fn declspec(&mut self) -> CTypeRef<'src> {
         while self.is_typename() {
             if self.consume("const") {
                 continue;
@@ -407,7 +407,7 @@ impl<'src> Parser<'src> {
         self.error_at("typename expected");
     }
 
-    fn func_params(&mut self, ty: CType<'src>) -> CType<'src> {
+    fn func_params(&mut self, ty: CTypeRef<'src>) -> CTypeRef<'src> {
         let mut params = vec![];
         let mut is_head = true;
         while !self.consume(")") {
@@ -418,7 +418,7 @@ impl<'src> Parser<'src> {
 
             let basety = self.declspec();
             let ty = self.declarator(basety);
-            params.push(ty.clone());
+            params.push(Rc::clone(&ty));
         }
 
         CType::new(
@@ -433,7 +433,7 @@ impl<'src> Parser<'src> {
         )
     }
 
-    fn type_suffix(&mut self, ty: CType<'src>) -> CType<'src> {
+    fn type_suffix(&mut self, ty: CTypeRef<'src>) -> CTypeRef<'src> {
         if self.consume("(") {
             return self.func_params(ty);
         }
@@ -448,7 +448,7 @@ impl<'src> Parser<'src> {
         ty
     }
 
-    fn declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+    fn declarator(&mut self, mut ty: CTypeRef<'src>) -> CTypeRef<'src> {
         if self.consume("void") {
             return CType::new(CTypeKind::Void, None, 1, 1);
         }
@@ -493,12 +493,12 @@ impl<'src> Parser<'src> {
         // その後に "(" ")" が続いた場合に型を関数に変更
         ty = self.type_suffix(ty);
         // 名前を設定
-        ty.name = name;
+        ty.borrow_mut().name = name;
 
         ty
     }
 
-    fn abstract_declarator(&mut self, mut ty: CType<'src>) -> CType<'src> {
+    fn abstract_declarator(&mut self, mut ty: CTypeRef<'src>) -> CTypeRef<'src> {
         while self.consume("*") {
             ty = CType::pointer_to(ty);
         }
@@ -521,7 +521,7 @@ impl<'src> Parser<'src> {
         self.type_suffix(ty)
     }
 
-    fn typename(&mut self) -> CType<'src> {
+    fn typename(&mut self) -> CTypeRef<'src> {
         let ty = self.declspec();
         self.abstract_declarator(ty)
     }
@@ -537,12 +537,12 @@ impl<'src> Parser<'src> {
             }
             i += 1;
 
-            let ty = self.declarator(basety.clone());
-            if let CTypeKind::Void = ty.kind {
+            let ty = self.declarator(Rc::clone(&basety));
+            if let CTypeKind::Void = ty.borrow().kind {
                 self.error_at("variable declared void");
             }
 
-            let name = self.get_ident(ty.name.clone().unwrap());
+            let name = self.get_ident(ty.borrow().name.clone().unwrap());
             let obj = self.new_var(name, ty, true);
 
             if !self.consume("=") {
@@ -876,8 +876,10 @@ impl<'src> Parser<'src> {
                     self.expect(",");
                 }
 
-                let ty = self.declarator(basety.clone());
-                let name = self.source_map.span_to_str(&ty.name.clone().unwrap().span);
+                let ty = self.declarator(Rc::clone(&basety));
+                let name = self
+                    .source_map
+                    .span_to_str(&ty.borrow().name.clone().unwrap().span);
                 members.push(Member {
                     ty,
                     name,
@@ -891,7 +893,7 @@ impl<'src> Parser<'src> {
         members
     }
 
-    fn struct_union_decl(&mut self) -> CType<'src> {
+    fn struct_union_decl(&mut self) -> CTypeRef<'src> {
         let mut tag = None;
         if self.tokens[self.cursor].kind == TokenKind::Ident {
             let token = &self.tokens[self.cursor];
@@ -899,13 +901,15 @@ impl<'src> Parser<'src> {
             tag = Some(self.source_map.span_to_str(&token.span));
         }
 
-        if let Some(tag) = tag
+        if let Some(tag_name) = tag
             && !self.is_equal("{")
         {
-            if let Some(ty) = self.find_tag(tag) {
-                return ty.clone();
+            if let Some(tag) = self.find_tag(tag_name) {
+                // タグが設定されていて、すでにそれが存在し、structのメンバの定義がない場合は該当のタグを返す
+                return Rc::clone(&tag.ty);
             }
 
+            // タグが設定されている && タグが存在しない && structのメンバの定義がない場合は incomplete な定義を追加
             let ty = CType::new(
                 CTypeKind::Struct {
                     members: vec![],
@@ -915,92 +919,109 @@ impl<'src> Parser<'src> {
                 0,
                 0,
             );
-            self.push_tag(tag, ty.clone());
+
+            self.push_tag(tag_name, ty.clone());
             return ty;
         }
 
         self.expect("{");
 
-        let members = self.struct_members();
-        let ty = CType::new(
+        let new_members = self.struct_members();
+        if let Some(tag_name) = tag {
+            if let Some(tag) = self.find_tag(tag_name) {
+                let mut ty_mut = tag.ty.borrow_mut();
+                ty_mut.kind = CTypeKind::Struct {
+                    members: new_members,
+                    is_incomplete: false,
+                };
+
+                return Rc::clone(&tag.ty);
+            } else {
+                let ty = CType::new(
+                    CTypeKind::Struct {
+                        members: new_members,
+                        is_incomplete: false,
+                    },
+                    None,
+                    0,
+                    1,
+                );
+                self.push_tag(tag_name, Rc::clone(&ty));
+                return ty;
+            }
+        }
+
+        CType::new(
             CTypeKind::Struct {
-                members,
+                members: new_members,
                 is_incomplete: false,
             },
             None,
             0,
             1,
-        );
-        if let Some(tag) = tag {
-            for t in &mut self.tags {
-                if t.name == tag {
-                    t.ty = ty.clone();
-                    return t.ty.clone();
+        )
+    }
+
+    fn struct_decl(&mut self) -> CTypeRef<'src> {
+        let ty = self.struct_union_decl();
+
+        {
+            let mut ty_mut = ty.borrow_mut();
+            let CTypeKind::Struct {
+                members,
+                is_incomplete,
+            } = &mut ty_mut.kind
+            else {
+                self.error_at("not a struct");
+            };
+
+            if *is_incomplete {
+                // incomplete な struct は align / offset / size の計算は不要
+                return ty.to_owned();
+            }
+
+            let mut offset = 0;
+            let mut align = 1;
+            for member in members {
+                offset = align_to(offset, member.ty.borrow().align);
+                member.offset = offset;
+                offset += member.ty.borrow().size;
+
+                if align < member.ty.borrow().align {
+                    align = member.ty.borrow().align;
                 }
             }
 
-            self.push_tag(tag, ty.clone());
+            ty_mut.size = align_to(offset, align);
+            ty_mut.align = align;
         }
 
         ty
     }
 
-    fn struct_decl(&mut self) -> CType<'src> {
-        let ty = &mut self.struct_union_decl();
-        let CTypeKind::Struct {
-            members,
-            is_incomplete,
-        } = &mut ty.kind
-        else {
-            self.error_at("not a struct");
-        };
-
-        if *is_incomplete {
-            return ty.to_owned();
-        }
-
-        let mut offset = 0;
-        let mut align = 1;
-        for member in members {
-            offset = align_to(offset, member.ty.align);
-            member.offset = offset;
-            offset += member.ty.size;
-
-            if align < member.ty.align {
-                align = member.ty.align;
-            }
-        }
-
-        ty.size = align_to(offset, align);
-
-        ty.to_owned()
-    }
-
-    fn push_tag(&mut self, tag: &'src str, ty: CType<'src>) {
+    fn push_tag(&mut self, tag: &'src str, ty: CTypeRef<'src>) {
         self.tags.push(Tag { name: tag, ty });
     }
 
-    fn find_tag(&self, tag: &str) -> Option<&CType<'src>> {
-        self.tags
-            .iter()
-            .rev()
-            .find(|t| t.name == tag)
-            .map(|tag| &tag.ty)
+    fn find_tag(&mut self, tag: &str) -> Option<&mut Tag<'src>> {
+        self.tags.iter_mut().rev().find(|t| t.name == tag)
     }
 
-    fn get_struct_member(&mut self, ty: CType<'src>, token: &Token) -> Member<'src> {
+    fn get_struct_member(&mut self, ty: CTypeRef<'src>, token: &Token) -> Member<'src> {
         let raw_token = self.source_map.span_to_str(&token.span);
 
         if let CType {
             kind: CTypeKind::Struct { members, .. },
             ..
-        } = ty
+        } = &*ty.borrow()
         {
             for mem in members {
                 if mem.name == raw_token {
-                    return mem;
+                    return mem.to_owned();
                 }
             }
+
+            self.error_at(&format!("no such member; type: {ty:#?}"));
         }
 
         self.error_at("no such member")
@@ -1009,8 +1030,11 @@ impl<'src> Parser<'src> {
     fn struct_ref(&mut self, lhs: Node<'src>, cursor: usize) -> Node<'src> {
         let token = &self.tokens[cursor].clone();
 
-        let lhs_type = TypedNode::from(lhs.clone()).ctype.clone().unwrap();
-        if !matches!(lhs_type.kind, CTypeKind::Struct { .. }) {
+        let lhs_type = TypedNode::from(lhs.clone())
+            .ctype
+            .map(|ty| Rc::clone(&ty))
+            .unwrap();
+        if !matches!(lhs_type.borrow().kind, CTypeKind::Struct { .. }) {
             self.error_at("not a struct");
         }
 
@@ -1127,13 +1151,15 @@ impl<'src> Parser<'src> {
 
             // log(&format!("TYPE: {ty:#?}"));
 
-            return Node::new(NodeKind::Num(ty.size as i32));
+            return Node::new(NodeKind::Num(ty.borrow().size as i32));
         }
 
         if self.consume("sizeof") {
             let node = self.unary();
             let typed_node: TypedNode<'_> = node.into();
-            return Node::new(NodeKind::Num(typed_node.ctype.unwrap().size as i32));
+            return Node::new(NodeKind::Num(
+                typed_node.ctype.unwrap().borrow().size as i32,
+            ));
         }
 
         let token = &self.tokens[self.cursor];

@@ -1,5 +1,5 @@
 use crate::{
-    ctype::{CType, CTypeKind, TypedObject},
+    ctype::{CTypeKind, CTypeRef, TypedObject},
     escape::escape,
 };
 use std::{collections::HashMap, io::Write};
@@ -35,7 +35,7 @@ impl<'src> Codegen<'src> {
                 writeln!(&mut self.writer, "  .section .data").unwrap();
                 writeln!(&mut self.writer, "{name}:").unwrap();
 
-                writeln!(&mut self.writer, "  .zero {}", ctype.size).unwrap();
+                writeln!(&mut self.writer, "  .zero {}", ctype.borrow().size).unwrap();
             }
 
             if let TypedObject::StringLiteral { id, string, .. } = function {
@@ -66,10 +66,11 @@ impl<'src> Codegen<'src> {
             } = function
             {
                 let mut offset = 0;
-
                 for local in locals.iter().rev() {
                     if let TypedObject::Object { name, ctype, .. } = local {
-                        offset += ctype.size;
+                        let ty = ctype.borrow();
+                        offset = align_to(offset, ty.align);
+                        offset += ty.size;
                         self.locals.insert(name, -(offset as i32));
                     }
                 }
@@ -92,12 +93,9 @@ impl<'src> Codegen<'src> {
                 for (param, reg) in params.iter().zip(ARG_REG) {
                     let offset = self.locals.get(param.name().unwrap()).unwrap();
 
-                    if let TypedObject::Object {
-                        ctype: CType { size, .. },
-                        ..
-                    } = param
-                    {
-                        match *size {
+                    if let TypedObject::Object { ctype, .. } = param {
+                        let size = ctype.borrow().size;
+                        match size {
                             1 => {
                                 writeln!(&mut self.writer, "  sb {reg}, {offset}(fp)").unwrap();
                             }
@@ -221,8 +219,8 @@ impl<'src> Codegen<'src> {
                 pop(&mut self.writer, "t0");
 
                 let postfix = match (
-                    lhs.ctype.clone().unwrap().size,
-                    rhs.ctype.clone().unwrap().size,
+                    lhs.ctype.map(|ty| ty.borrow().size).unwrap(),
+                    rhs.ctype.map(|ty| ty.borrow().size).unwrap(),
                 ) {
                     (4, 4) => "w",
                     (_, _) => "",
@@ -366,29 +364,25 @@ fn pop(writer: &mut Box<dyn Write>, reg: &str) {
     writeln!(writer, "  addi sp, sp, 8").unwrap();
 }
 
-fn load(writer: &mut Box<dyn Write>, ty: &CType) {
-    if let CTypeKind::Array { .. } = ty.kind {
+fn load(writer: &mut Box<dyn Write>, ty: &CTypeRef) {
+    if let CTypeKind::Array { .. } = ty.borrow().kind {
         return;
     }
 
-    if ty.size == 1 {
-        writeln!(writer, "  lb a0, 0(a0)").unwrap();
-    } else if ty.size == 4 {
-        writeln!(writer, "  lw a0, 0(a0)").unwrap();
-    } else {
-        writeln!(writer, "  ld a0, 0(a0)").unwrap();
+    match ty.borrow().size {
+        1 => writeln!(writer, "  lb a0, 0(a0)").unwrap(),
+        4 => writeln!(writer, "  lw a0, 0(a0)").unwrap(),
+        _ => writeln!(writer, "  ld a0, 0(a0)").unwrap(),
     }
 }
 
-fn store(writer: &mut Box<dyn Write>, ty: &CType) {
+fn store(writer: &mut Box<dyn Write>, ty: &CTypeRef) {
     pop(writer, "a1");
 
-    if ty.size == 1 {
-        writeln!(writer, "  sb a0, 0(a1)").unwrap();
-    } else if ty.size == 4 {
-        writeln!(writer, "  sw a0, 0(a1)").unwrap();
-    } else {
-        writeln!(writer, "  sd a0, 0(a1)").unwrap();
+    match ty.borrow().size {
+        1 => writeln!(writer, "  sb a0, 0(a1)").unwrap(),
+        4 => writeln!(writer, "  sw a0, 0(a1)").unwrap(),
+        _ => writeln!(writer, "  sd a0, 0(a1)").unwrap(),
     }
 }
 
