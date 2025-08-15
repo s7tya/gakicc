@@ -600,6 +600,52 @@ impl<'src> Parser<'src> {
         node
     }
 
+    fn to_assign(&mut self, binary: Node<'src>) -> Node<'src> {
+        if let Node {
+            kind: NodeKind::BinOp { op, lhs, rhs },
+        } = binary
+        {
+            let typed_lhs: TypedNode<'src> = (*lhs).clone().into();
+            let obj = Box::new(self.new_var("", CType::pointer_to(typed_lhs.ctype.unwrap()), true));
+
+            let expr1 = Node::new(NodeKind::BinOp {
+                op: BinOp::Assign,
+                lhs: Box::new(Node::new(NodeKind::Var(obj.clone()))),
+                rhs: Box::new(Node::new(NodeKind::Addr(lhs.clone()))),
+            });
+
+            let deref_tmp = || {
+                Node::new(NodeKind::Deref(Box::new(Node::new(NodeKind::Var(
+                    obj.clone(),
+                )))))
+            };
+
+            let expr2 = Node::new(NodeKind::BinOp {
+                op: BinOp::Assign,
+                lhs: Box::new(deref_tmp()),
+                rhs: Box::new(Node::new(NodeKind::BinOp {
+                    op,
+                    lhs: Box::new(deref_tmp()),
+                    rhs,
+                })),
+            });
+
+            let expr3 = deref_tmp();
+
+            return Node::new(NodeKind::BinOp {
+                op: BinOp::Comma,
+                lhs: Box::new(expr1),
+                rhs: Box::new(Node::new(NodeKind::BinOp {
+                    op: BinOp::Comma,
+                    lhs: Box::new(expr2),
+                    rhs: Box::new(expr3),
+                })),
+            });
+        }
+
+        self.error_at("not a binary");
+    }
+
     fn assign(&mut self) -> Node<'src> {
         let mut node = self.logor();
 
@@ -609,6 +655,42 @@ impl<'src> Parser<'src> {
                 lhs: Box::new(node),
                 rhs: Box::new(self.assign()),
             })
+        }
+
+        if self.consume("+=") {
+            let rhs = Box::new(self.assign());
+            return self.to_assign(Node::new(NodeKind::BinOp {
+                op: BinOp::Add,
+                lhs: Box::new(node),
+                rhs,
+            }));
+        }
+
+        if self.consume("-=") {
+            let rhs = Box::new(self.assign());
+            return self.to_assign(Node::new(NodeKind::BinOp {
+                op: BinOp::Sub,
+                lhs: Box::new(node),
+                rhs,
+            }));
+        }
+
+        if self.consume("*=") {
+            let rhs = Box::new(self.assign());
+            return self.to_assign(Node::new(NodeKind::BinOp {
+                op: BinOp::Mul,
+                lhs: Box::new(node),
+                rhs,
+            }));
+        }
+
+        if self.consume("/=") {
+            let rhs = Box::new(self.assign());
+            return self.to_assign(Node::new(NodeKind::BinOp {
+                op: BinOp::Div,
+                lhs: Box::new(node),
+                rhs,
+            }));
         }
 
         node
