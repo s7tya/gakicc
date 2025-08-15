@@ -1043,6 +1043,34 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
+            if self.consume("++") {
+                let one = Box::new(Node::new(NodeKind::Num(1)));
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Sub,
+                    lhs: Box::new(self.to_assign(Node::new(NodeKind::BinOp {
+                        op: BinOp::Add,
+                        lhs: Box::new(node),
+                        rhs: one.clone(),
+                    }))),
+                    rhs: one,
+                });
+                continue;
+            }
+
+            if self.consume("--") {
+                let one = Box::new(Node::new(NodeKind::Num(1)));
+                node = Node::new(NodeKind::BinOp {
+                    op: BinOp::Add,
+                    lhs: Box::new(self.to_assign(Node::new(NodeKind::BinOp {
+                        op: BinOp::Sub,
+                        lhs: Box::new(node),
+                        rhs: one.clone(),
+                    }))),
+                    rhs: one,
+                });
+                continue;
+            }
+
             return node;
         }
     }

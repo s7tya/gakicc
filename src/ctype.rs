@@ -422,10 +422,13 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         }),
                         _,
                     ) => CType::pointer_to((**base).clone()),
-                    (Some(ty), TypedNodeKind::Var { .. } /* | TypedNodeKind::Deref(_) */) => {
+                    (Some(ty), TypedNodeKind::Var { .. } | TypedNodeKind::Deref(_)) => {
                         CType::pointer_to(ty.clone())
                     }
-                    _ => panic!("invalid operand for &"),
+                    _ => panic!(
+                        "invalid operand for &: \n{:#?}\n\n{:#?}",
+                        typed_node.ctype, typed_node.kind
+                    ),
                 };
 
                 TypedNode {
