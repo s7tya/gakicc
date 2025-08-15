@@ -164,6 +164,7 @@ fn main() {
     let mut parser = Parser::new(&source_map, tokens);
 
     let functions = parser.parse();
+
     let typed_functions = functions
         .into_iter()
         .map(TypedObject::from)

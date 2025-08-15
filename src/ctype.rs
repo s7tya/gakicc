@@ -231,7 +231,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     ctype: Some(ctype),
                 },
                 _ => {
-                    panic!("{object:?} is not ObjectKind::Object or ObjectKind::StringLiteral")
+                    panic!("not ObjectKind::Object or ObjectKind::StringLiteral")
                 }
             },
             NodeKind::BinOp {
@@ -272,6 +272,23 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         rhs: Box::new(rhs),
                     },
                     ctype: lhs_ctype,
+                }
+            }
+            NodeKind::BinOp {
+                op: op @ (BinOp::LogAnd | BinOp::LogOr),
+                lhs,
+                rhs,
+            } => {
+                let lhs = (*lhs).into();
+                let rhs = (*rhs).into();
+
+                TypedNode {
+                    kind: TypedNodeKind::BinOp {
+                        op,
+                        lhs: Box::new(lhs),
+                        rhs: Box::new(rhs),
+                    },
+                    ctype: Some(CType::int()),
                 }
             }
             NodeKind::BinOp { op, lhs, rhs } => {
@@ -423,7 +440,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     // else
                     // TODO: これ本当は wildcard にしない方がいい気がする
                     (_, _, _) => {
-                        panic!("{lhs:?}\n{op:?}\n{rhs:?} is not defined")
+                        panic!("not defined: {op:?}")
                     }
                 }
             }
@@ -450,10 +467,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     (Some(ty), TypedNodeKind::Var { .. } | TypedNodeKind::Deref(_)) => {
                         CType::pointer_to(ty.clone().into())
                     }
-                    _ => panic!(
-                        "invalid operand for &: \n{:#?}\n\n{:#?}",
-                        typed_node.ctype, typed_node.kind
-                    ),
+                    _ => panic!("invalid operand for &"),
                 };
 
                 TypedNode {
@@ -483,10 +497,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     };
                 }
 
-                panic!(
-                    "invalid pointer dereference: {:#?}",
-                    typed_node.ctype.as_ref().map(|ty| ty.borrow().kind.clone())
-                );
+                panic!("invalid pointer dereference");
             }
             NodeKind::ExprStmt(node) => {
                 let typed_node = Box::new((*node).into());

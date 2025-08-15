@@ -296,7 +296,7 @@ impl<'src> Codegen<'src> {
                 }
             }
 
-            _ => panic!("invalid expression: {:?}", node.kind),
+            _ => panic!("invalid expression"),
         }
     }
 
@@ -362,7 +362,7 @@ impl<'src> Codegen<'src> {
                 self.gen_expr(*node);
             }
             _ => {
-                panic!("invalid statement: {:?}", node.kind);
+                panic!("invalid statement");
             }
         }
     }
