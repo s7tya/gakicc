@@ -330,7 +330,9 @@ impl<'src> Codegen<'src> {
                 }
             }
             TypedNodeKind::Return(node) => {
-                self.gen_expr(*node);
+                if let Some(node) = node {
+                    self.gen_expr(*node);
+                }
                 writeln!(
                     &mut self.writer,
                     "  j .L.return.{}",

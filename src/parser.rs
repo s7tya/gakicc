@@ -60,7 +60,7 @@ pub enum NodeKind<'src> {
     Num(i32),
     ExprStmt(Box<Node<'src>>),
     Var(Box<Object<'src>>),
-    Return(Box<Node<'src>>),
+    Return(Option<Box<Node<'src>>>),
     Block(Vec<Node<'src>>),
     FuncCall {
         name: &'src str,
@@ -330,10 +330,13 @@ impl<'src> Parser<'src> {
 
     fn stmt(&mut self) -> Node<'src> {
         if self.consume("return") {
-            let node = Node::new(NodeKind::Return(Box::new(self.expr())));
-            self.expect(";");
+            if !self.consume(";") {
+                let node = Node::new(NodeKind::Return(Some(Box::new(self.expr()))));
+                self.expect(";");
+                return node;
+            }
 
-            return node;
+            return Node::new(NodeKind::Return(None));
         }
 
         if self.consume("if") {

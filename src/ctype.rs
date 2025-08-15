@@ -85,7 +85,7 @@ pub enum TypedNodeKind<'src> {
     Num(i32),
     ExprStmt(Box<TypedNode<'src>>),
     Var(Box<TypedObject<'src>>),
-    Return(Box<TypedNode<'src>>),
+    Return(Option<Box<TypedNode<'src>>>),
     Block(Vec<TypedNode<'src>>),
     FuncCall {
         name: &'src str,
@@ -496,9 +496,9 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 }
             }
             NodeKind::Return(node) => {
-                let typed_node = Box::new((*node).into());
+                let node = node.map(|node| Box::new((*node).into()));
                 TypedNode {
-                    kind: TypedNodeKind::Return(typed_node),
+                    kind: TypedNodeKind::Return(node),
                     ctype: None,
                 }
             }
