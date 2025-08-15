@@ -1043,6 +1043,13 @@ impl<'src> Parser<'src> {
                 continue;
             }
 
+            if self.consume("->") {
+                node = Node::new(NodeKind::Deref(Box::new(node)));
+                node = self.struct_ref(node, self.cursor);
+                self.cursor += 1;
+                continue;
+            }
+
             if self.consume("++") {
                 let one = Box::new(Node::new(NodeKind::Num(1)));
                 node = Node::new(NodeKind::BinOp {

@@ -248,6 +248,24 @@ int t27() {
   t + y.x;
 }
 
+int t28() {
+  struct t {
+    char a;
+  } x;
+  struct t *y = &x;
+  x.a = 3;
+  y->a;
+}
+
+int t29() {
+  struct t {
+    char a;
+  } x;
+  struct t *y = &x;
+  y->a = 3;
+  x.a;
+}
+
 int main() {
   ASSERT(1, t1());
   ASSERT(2, t2());
@@ -276,6 +294,9 @@ int main() {
   ASSERT(8, t25());
   // ASSERT(2, t26()); // TODO: tag scope
   ASSERT(3, t27());
+
+  ASSERT(3, t28());
+  ASSERT(3, t29());
 
   printf("OK\n");
   return 0;
