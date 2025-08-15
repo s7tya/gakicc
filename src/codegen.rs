@@ -60,7 +60,7 @@ impl<'src> Codegen<'src> {
         for function in functions {
             if let TypedObject::Function {
                 name,
-                node,
+                node: Some(node),
                 params,
                 locals,
             } = function

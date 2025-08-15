@@ -1,3 +1,7 @@
+int putchar();
+void* memset();
+int usleep();
+int printf();
 
 int m(int a, int b) { return (a * b + 5000) / 10000; }
 void a(int* c, int* s, int d, int t) {

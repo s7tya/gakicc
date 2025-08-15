@@ -21,7 +21,7 @@ pub enum TypedObject<'src> {
     },
     Function {
         name: &'src str,
-        node: TypedNode<'src>,
+        node: Option<TypedNode<'src>>,
         locals: Vec<TypedObject<'src>>,
         params: Vec<TypedObject<'src>>,
     },
@@ -57,9 +57,10 @@ impl<'src> From<Object<'src>> for TypedObject<'src> {
                 node,
                 locals,
                 params,
+                ..
             } => TypedObject::Function {
                 name,
-                node: (node).into(),
+                node: (node).map(|n| n.into()),
                 locals: locals
                     .into_iter()
                     .map(|local| local.into())
@@ -149,13 +150,19 @@ impl<'src> From<CType<'src>> for CTypeRef<'src> {
 }
 
 impl<'src> CType<'src> {
-    pub fn new(kind: CTypeKind<'src>, name: Option<Token>, size: usize, align: usize) -> CTypeRef<'src> {
+    pub fn new(
+        kind: CTypeKind<'src>,
+        name: Option<Token>,
+        size: usize,
+        align: usize,
+    ) -> CTypeRef<'src> {
         CType {
             kind,
             name,
             size,
             align,
-        }.into()
+        }
+        .into()
     }
 
     pub fn pointer_to(base: CTypeRef<'src>) -> CTypeRef<'src> {
@@ -164,7 +171,8 @@ impl<'src> CType<'src> {
             name: None,
             size: 8,
             align: 8,
-        }.into()
+        }
+        .into()
     }
 
     pub fn dummy() -> CTypeRef<'src> {
@@ -270,7 +278,11 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 let lhs: TypedNode<'_> = (*lhs).into();
                 let rhs: TypedNode<'_> = (*rhs).into();
 
-                match (&op, lhs.ctype.as_ref().map(|ty| ty.borrow().clone()), rhs.ctype.as_ref().map(|ty| ty.borrow().clone())) {
+                match (
+                    &op,
+                    lhs.ctype.as_ref().map(|ty| ty.borrow().clone()),
+                    rhs.ctype.as_ref().map(|ty| ty.borrow().clone()),
+                ) {
                     // (int | char) _ (int | char) -> int
                     (
                         _,
@@ -415,16 +427,19 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                     }
                 }
             }
-            NodeKind::FuncCall { name, args } => TypedNode {
+            NodeKind::FuncCall { name, args, ret_ty } => TypedNode {
                 kind: TypedNodeKind::FuncCall {
                     name,
                     args: args.into_iter().map(|arg| arg.into()).collect::<Vec<_>>(),
                 },
-                ctype: Some(CType::int()),
+                ctype: Some(ret_ty),
             },
             NodeKind::Addr(node) => {
                 let typed_node: TypedNode<'_> = (*node).into();
-                let ctype = match (typed_node.ctype.as_ref().map(|ty| ty.borrow().clone()), &typed_node.kind) {
+                let ctype = match (
+                    typed_node.ctype.as_ref().map(|ty| ty.borrow().clone()),
+                    &typed_node.kind,
+                ) {
                     (
                         Some(CType {
                             kind: CTypeKind::Array { base, .. },
@@ -448,8 +463,15 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
             }
             NodeKind::Deref(node) => {
                 let typed_node: TypedNode<'_> = (*node).into();
-                if let CTypeKind::Array { base, .. } | CTypeKind::Ptr(base) =
-                    &typed_node.ctype.as_ref().map(|ty| ty.borrow().kind.clone()).unwrap()
+                if let CTypeKind::Array { base, .. }
+                | CTypeKind::Ptr(base)
+                | CTypeKind::Function {
+                    return_ty: base, ..
+                } = &typed_node
+                    .ctype
+                    .as_ref()
+                    .map(|ty| ty.borrow().kind.clone())
+                    .unwrap()
                 {
                     if base.borrow().kind == CTypeKind::Void {
                         panic!("invalid pointer dereference");
@@ -457,11 +479,14 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
 
                     return TypedNode {
                         kind: TypedNodeKind::Deref(Box::new(typed_node)),
-                        ctype: Some((**base).clone()),
+                        ctype: Some(Rc::clone(base)),
                     };
                 }
 
-                panic!("invalid pointer dereference")
+                panic!(
+                    "invalid pointer dereference: {:#?}",
+                    typed_node.ctype.as_ref().map(|ty| ty.borrow().kind.clone())
+                );
             }
             NodeKind::ExprStmt(node) => {
                 let typed_node = Box::new((*node).into());

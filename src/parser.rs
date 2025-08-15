@@ -21,9 +21,10 @@ pub enum Object<'src> {
     },
     Function {
         name: &'src str,
-        node: Node<'src>,
+        node: Option<Node<'src>>,
         locals: Vec<Object<'src>>,
         params: Vec<Object<'src>>,
+        ret_type: CTypeRef<'src>,
     },
 }
 
@@ -64,6 +65,7 @@ pub enum NodeKind<'src> {
     FuncCall {
         name: &'src str,
         args: Vec<Node<'src>>,
+        ret_ty: CTypeRef<'src>,
     },
     Addr(Box<Node<'src>>),
     Deref(Box<Node<'src>>),
@@ -214,7 +216,7 @@ impl<'src> Parser<'src> {
     fn find_var(&self, name: &str) -> Option<Object<'src>> {
         self.locals
             .iter()
-            .chain(&self.globals)
+            .chain(self.globals.iter().rev())
             .find(|obj| obj.name() == Some(name))
             .cloned()
     }
@@ -246,9 +248,7 @@ impl<'src> Parser<'src> {
             let basety = self.declspec();
 
             if self.is_function() {
-                if let Some(function) = self.function(basety) {
-                    self.globals.push(function);
-                }
+                self.function(basety);
             } else {
                 self.global_variable(basety);
             }
@@ -257,26 +257,60 @@ impl<'src> Parser<'src> {
         self.globals.clone()
     }
 
-    fn function(&mut self, basety: CTypeRef<'src>) -> Option<Object<'src>> {
+    fn function(&mut self, basety: CTypeRef<'src>) {
         let ty = self.declarator(basety);
-
-        if self.consume(";") {
-            return None;
-        }
+        let ret_ty = match &ty.borrow().kind {
+            CTypeKind::Function { return_ty, .. } => Rc::clone(return_ty),
+            _ => self.error_at("not a function"),
+        };
 
         self.locals = vec![];
-
         let name = self.get_ident(ty.borrow().name.clone().unwrap());
-        self.create_param_lvars(ty);
+        self.create_param_lvars(Rc::clone(&ty));
         let params = self.locals.clone();
-        self.expect("{");
 
-        Some(Object::Function {
-            name,
-            node: self.compound_stmt(),
-            locals: self.locals.clone(),
-            params,
-        })
+        let idx = if let Some(i) = self.globals.iter().position(|g| g.name() == Some(name)) {
+            i
+        } else {
+            self.globals.push(Object::Function {
+                name,
+                node: None,
+                locals: vec![],
+                params: params.clone(),
+                ret_type: ret_ty.clone(),
+            });
+            self.globals.len() - 1
+        };
+
+        if self.consume(";") {
+            if let Object::Function {
+                ret_type,
+                params: p,
+                ..
+            } = &mut self.globals[idx]
+            {
+                *ret_type = ret_ty;
+                *p = params;
+            }
+            return;
+        }
+
+        self.expect("{");
+        let body = self.compound_stmt();
+
+        if let Object::Function {
+            node,
+            locals,
+            params: p,
+            ret_type,
+            ..
+        } = &mut self.globals[idx]
+        {
+            *node = Some(body);
+            *locals = self.locals.clone();
+            *p = params;
+            *ret_type = ret_ty;
+        }
     }
 
     fn global_variable(&mut self, basety: CTypeRef<'src>) {
@@ -449,21 +483,6 @@ impl<'src> Parser<'src> {
     }
 
     fn declarator(&mut self, mut ty: CTypeRef<'src>) -> CTypeRef<'src> {
-        if self.consume("void") {
-            return CType::new(CTypeKind::Void, None, 1, 1);
-        }
-
-        if self.consume("char") {
-            return CType::char();
-        }
-
-        if self.consume("int") {
-            return CType::int();
-        }
-
-        if self.consume("struct") {
-            return self.struct_decl();
-        }
         while self.consume("*") {
             ty = CType::pointer_to(ty);
         }
@@ -1035,7 +1054,7 @@ impl<'src> Parser<'src> {
             .map(|ty| Rc::clone(&ty))
             .unwrap();
         if !matches!(lhs_type.borrow().kind, CTypeKind::Struct { .. }) {
-            self.error_at("not a struct");
+            self.error_at(&format!("not a struct: {:#?}", lhs_type.borrow().kind));
         }
 
         let member = self.get_struct_member(lhs_type, token);
@@ -1121,8 +1140,15 @@ impl<'src> Parser<'src> {
 
             cur.push(self.assign());
         }
+        if let Some(Object::Function { ret_type, .. }) = self.find_var(name) {
+            return Node::new(NodeKind::FuncCall {
+                name,
+                args: cur,
+                ret_ty: ret_type,
+            });
+        }
 
-        Node::new(NodeKind::FuncCall { name, args: cur })
+        self.error_at(&format!("function {name} not found"));
     }
 
     fn primary(&mut self) -> Node<'src> {
