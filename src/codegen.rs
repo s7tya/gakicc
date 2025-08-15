@@ -157,7 +157,7 @@ impl<'src> Codegen<'src> {
                 rhs,
             } => {
                 self.gen_expr(*lhs);
-                self.gen_expr(*rhs);
+                self.gen_addr(*rhs);
             }
             TypedNodeKind::Member { node, member } => {
                 self.gen_addr(*node);
@@ -252,8 +252,7 @@ impl<'src> Codegen<'src> {
                         writeln!(&mut self.writer, "  xori a0, a0, 1").unwrap();
                     }
                     BinOp::Comma => {
-                        self.gen_expr(*lhs);
-                        self.gen_expr(*rhs);
+                        writeln!(&mut self.writer, "  mv a0, t1").unwrap();
                     }
                     BinOp::LogOr => {
                         self.count += 1;

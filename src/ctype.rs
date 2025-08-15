@@ -259,7 +259,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                 let lhs: TypedNode<'_> = (*lhs).into();
                 let rhs: TypedNode<'_> = (*rhs).into();
 
-                match (&op, lhs.ctype.clone(), rhs.ctype.clone()) {
+                match (&op, lhs.ctype.as_ref(), rhs.ctype.as_ref()) {
                     // (int | char) _ (int | char) -> int
                     (
                         _,
@@ -284,7 +284,6 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         BinOp::Add,
                         Some(CType {
                             kind: CTypeKind::Int | CTypeKind::Char,
-                            name: None,
                             ..
                         }),
                         Some(CType {
@@ -310,9 +309,9 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             kind: TypedNodeKind::BinOp {
                                 op,
                                 lhs: Box::new(lhs),
-                                rhs: Box::new(rhs),
+                                rhs: Box::new(rhs.clone()),
                             },
-                            ctype: Some(CType::pointer_to(*ctype.clone())),
+                            ctype: Some(CType::pointer_to((**ctype).clone())),
                         }
                     }
                     // ptr + (int | char), ptr - (int | char)
@@ -344,10 +343,10 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         TypedNode {
                             kind: TypedNodeKind::BinOp {
                                 op,
-                                lhs: Box::new(lhs),
+                                lhs: Box::new(lhs.clone()),
                                 rhs: Box::new(rhs),
                             },
-                            ctype: Some(CType::pointer_to(*ctype.clone())),
+                            ctype: Some(CType::pointer_to((**ctype).clone())),
                         }
                     }
                     // ptr - ptr
@@ -369,7 +368,7 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                         let typed_node = TypedNode {
                             kind: TypedNodeKind::BinOp {
                                 op,
-                                lhs: Box::new(lhs),
+                                lhs: Box::new(lhs.clone()),
                                 rhs: Box::new(rhs),
                             },
                             ctype: Some(CType::int()),
@@ -389,6 +388,14 @@ impl<'src> From<Node<'src>> for TypedNode<'src> {
                             ctype: Some(CType::int()),
                         }
                     }
+                    (BinOp::Comma, _, rhs_ty) => TypedNode {
+                        kind: TypedNodeKind::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs.clone()),
+                        },
+                        ctype: rhs_ty.cloned(),
+                    },
 
                     // else
                     // TODO: これ本当は wildcard にしない方がいい気がする
