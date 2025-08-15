@@ -220,21 +220,29 @@ impl<'src> Codegen<'src> {
                 pop(&mut self.writer, "t1");
                 pop(&mut self.writer, "t0");
 
+                let postfix = match (
+                    lhs.ctype.clone().unwrap().size,
+                    rhs.ctype.clone().unwrap().size,
+                ) {
+                    (4, 4) => "w",
+                    (_, _) => "",
+                };
+
                 match op {
                     BinOp::Add => {
-                        writeln!(&mut self.writer, "  add a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  add{postfix} a0, t0, t1",).unwrap();
                     }
                     BinOp::Sub => {
-                        writeln!(&mut self.writer, "  sub a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  sub{postfix} a0, t0, t1").unwrap();
                     }
                     BinOp::Mul => {
-                        writeln!(&mut self.writer, "  mul a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  mul{postfix} a0, t0, t1").unwrap();
                     }
                     BinOp::Div => {
-                        writeln!(&mut self.writer, "  div a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  div{postfix} a0, t0, t1").unwrap();
                     }
                     BinOp::Mod => {
-                        writeln!(&mut self.writer, "  remw a0, t0, t1").unwrap();
+                        writeln!(&mut self.writer, "  rem{postfix} a0, t0, t1").unwrap();
                     }
                     BinOp::Eq => {
                         writeln!(&mut self.writer, "  xor a0, t0, t1").unwrap();
