@@ -25,4 +25,4 @@ check -o
 gakicc --help 2>&1 | grep -q gakicc
 check --help
 
-echo OK
+echo -e "OK\n"
