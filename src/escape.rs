@@ -82,7 +82,7 @@ pub fn escape(input: &str) -> String {
             continue;
         }
 
-        s += &format!("\\x{:X}", u32::from(c));
+        s += &format!("\\{:03o}", u32::from(c));
     }
 
     s
